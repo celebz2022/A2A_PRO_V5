@@ -1,0 +1,2 @@
+[deploy]
+startCommand = "python A2A_PRO_V5.py"
