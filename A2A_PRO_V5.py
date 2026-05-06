@@ -9,7 +9,7 @@ import sys
 # ENV VARIABLES
 # =========================
 BOT_TOKEN = os.getenv("8628606501:AAGMzru09_Hckmd_I1Xuyoel3GWiqHgeZS4")
-DATABASE_URL = os.getenv("https://api.telegram.org/bot{BOT_TOKEN}")
+DATABASE_URL = os.getenv("postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway")
 
 if not BOT_TOKEN:
     print("❌ BOT_TOKEN missing")
