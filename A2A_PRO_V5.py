@@ -9,7 +9,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # =========================
 # ENV VARIABLES (IMPORTANT)
 # =========================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("8628606501:AAGMzru09_Hckmd_I1Xuyoel3GWiqHgeZS4")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
