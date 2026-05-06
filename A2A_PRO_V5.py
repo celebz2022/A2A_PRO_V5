@@ -35,7 +35,6 @@ conn.commit()
 # MEMORY
 # =========================
 user_state = {}
-shown_cache = set()
 
 # =========================
 # CLEAN TEXT
@@ -46,7 +45,7 @@ def clean_text(t):
     return re.sub(r"\s+", " ", t).strip()
 
 # =========================
-# SIMPLE SCORE
+# SCORE
 # =========================
 def score(query, text):
     q = clean_text(query)
@@ -85,17 +84,18 @@ def send(chat_id, text, reply_markup=None):
 WELCOME_MESSAGE = (
 "🚀 Welcome to A2A_PRO Marketplace\n"
 "👉 https://t.me/a2aprobot\n\n"
-"🏠 How to List:\n"
+"🏠 How to List Property:\n"
 "1. Tap List Property\n"
-"2. Send listing\n"
-"3. Add WhatsApp link\n\n"
+"2. Start sending listings (MULTI MODE)\n"
+"3. Include WhatsApp link\n\n"
 "Example:\n"
-"Damac Heights 3BR Vacant price: 3.5M\n"
+"Damac Heights 3BR price: 3.5M\n"
 "https://wa.me/971XXXXXXXXX\n\n"
 "🔎 Search examples:\n"
 "- Damac under 4M\n"
 "- Emaar under 16M\n"
-"- Lake Terrace 3BR under 2.6M"
+"- Lake Terrace 3BR under 2.6M\n\n"
+"⚡ Multi-listing mode enabled"
 )
 
 # =========================
@@ -125,20 +125,25 @@ def handle_callback(cb):
         data={"callback_query_id": cb["id"]}
     )
 
-    # LIST
+    # EXIT LISTING MODE WHEN SWITCHING
+    if data in ["search", "manage", "restart"]:
+        user_state[chat_id] = None
+
+    # START MULTI-LISTING MODE
     if data == "list":
         user_state[chat_id] = "listing"
-        send(chat_id,
-             "🏠 Send listing:\n\n"
-             "Example:\n"
-             "Damac Heights 3BR price 3.5M\n"
-             "https://wa.me/971XXXXXXXXX")
 
-    # SEARCH
+        send(chat_id,
+        "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
+        "You can send unlimited listings.\n"
+        "When done, choose another option.\n\n"
+        "Example:\n"
+        "Damac Heights 3BR price: 3.5M\n"
+        "https://wa.me/971XXXXXXXXX")
+
     elif data == "search":
         send(chat_id, "🔎 Type your search")
 
-    # MANAGE (FIXED WITH DELETE BUTTON)
     elif data == "manage":
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
@@ -148,21 +153,17 @@ def handle_callback(cb):
             return
 
         for r in rows[:10]:
-            listing_id = r[0]
-            listing_text = r[1]
-
             keyboard = {
                 "inline_keyboard": [
                     [{
                         "text": "❌ Delete",
-                        "callback_data": f"del_{listing_id}"
+                        "callback_data": f"del_{r[0]}"
                     }]
                 ]
             }
 
-            send(chat_id, f"📄 {listing_text}", keyboard)
+            send(chat_id, f"📄 {r[1]}", keyboard)
 
-    # DELETE LISTING
     elif data.startswith("del_"):
         listing_id = int(data.split("_")[1])
 
@@ -172,9 +173,8 @@ def handle_callback(cb):
         )
         conn.commit()
 
-        send(chat_id, "🗑 Listing deleted.")
+        send(chat_id, "🗑 Deleted successfully")
 
-    # RESTART
     elif data == "restart":
         user_state[chat_id] = None
         send_main_menu(chat_id)
@@ -192,7 +192,7 @@ def get_updates(offset=None):
 # MAIN LOOP
 # =========================
 offset = None
-print("🚀 BOT RUNNING...")
+print("🚀 BOT RUNNING (MULTI-LISTING MODE ENABLED)")
 
 while True:
     try:
@@ -218,7 +218,7 @@ while True:
                 send_main_menu(chat_id)
                 continue
 
-            # SAVE LISTING
+            # SAVE LISTING (MULTI MODE)
             if user_state.get(chat_id) == "listing":
 
                 if "wa.me" not in text:
@@ -235,8 +235,7 @@ while True:
                 except Exception as e:
                     print("DB ERROR:", e)
 
-                user_state[chat_id] = None
-                send(chat_id, "✅ Saved!")
+                send(chat_id, "✅ Saved! Send another listing or change mode.")
                 continue
 
             # SEARCH
