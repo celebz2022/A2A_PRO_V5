@@ -7,6 +7,7 @@ import psycopg2
 # CONFIG
 # =========================
 BOT_TOKEN = "8628606501:AAGMzru09_Hckmd_I1Xuyoel3GWiqHgeZS4"
+
 DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway"
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -45,7 +46,7 @@ def clean_text(t):
     return re.sub(r"\s+", " ", t).strip()
 
 # =========================
-# SCORE
+# SIMPLE SCORE
 # =========================
 def score(query, text):
     q = clean_text(query)
@@ -62,7 +63,7 @@ def score(query, text):
     return s
 
 # =========================
-# SAFE SEND (FIXED)
+# SAFE SEND
 # =========================
 def send(chat_id, text, reply_markup=None):
     payload = {
@@ -79,23 +80,22 @@ def send(chat_id, text, reply_markup=None):
         print("Telegram Error:", r.text)
 
 # =========================
-# WELCOME MESSAGE (FIXED)
+# WELCOME MESSAGE
 # =========================
 WELCOME_MESSAGE = (
 "🚀 Welcome to A2A_PRO Marketplace\n"
 "👉 https://t.me/a2aprobot\n\n"
-"🏠 How to List a Property:\n"
+"🏠 How to List:\n"
 "1. Tap List Property\n"
-"2. Send your listing\n"
-"3. Include WhatsApp link\n\n"
+"2. Send listing\n"
+"3. Add WhatsApp link\n\n"
 "Example:\n"
 "Damac Heights 3BR Vacant price: 3.5M\n"
 "https://wa.me/971XXXXXXXXX\n\n"
-"🔎 How to Find:\n"
-"- Damac Heights under 4M\n"
-"- Emaar Oasis under 16M\n"
-"- Lake Terrace 3BR under 2.6M\n\n"
-"⚡ Real listings only"
+"🔎 Search examples:\n"
+"- Damac under 4M\n"
+"- Emaar under 16M\n"
+"- Lake Terrace 3BR under 2.6M"
 )
 
 # =========================
@@ -120,20 +120,25 @@ def handle_callback(cb):
     chat_id = cb["message"]["chat"]["id"]
     data = cb["data"]
 
-    requests.post(BASE_URL + "/answerCallbackQuery",
-                  data={"callback_query_id": cb["id"]})
+    requests.post(
+        BASE_URL + "/answerCallbackQuery",
+        data={"callback_query_id": cb["id"]}
+    )
 
+    # LIST
     if data == "list":
         user_state[chat_id] = "listing"
         send(chat_id,
-             "🏠 Send your listing:\n\n"
+             "🏠 Send listing:\n\n"
              "Example:\n"
-             "Damac Heights 3BR Vacant price: 3.5M\n"
+             "Damac Heights 3BR price 3.5M\n"
              "https://wa.me/971XXXXXXXXX")
 
+    # SEARCH
     elif data == "search":
-        send(chat_id, "🔎 Type your search (example: Damac 3BR under 4M)")
+        send(chat_id, "🔎 Type your search")
 
+    # MANAGE (FIXED WITH DELETE BUTTON)
     elif data == "manage":
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
@@ -143,8 +148,33 @@ def handle_callback(cb):
             return
 
         for r in rows[:10]:
-            send(chat_id, f"📄 {r[1]}")
+            listing_id = r[0]
+            listing_text = r[1]
 
+            keyboard = {
+                "inline_keyboard": [
+                    [{
+                        "text": "❌ Delete",
+                        "callback_data": f"del_{listing_id}"
+                    }]
+                ]
+            }
+
+            send(chat_id, f"📄 {listing_text}", keyboard)
+
+    # DELETE LISTING
+    elif data.startswith("del_"):
+        listing_id = int(data.split("_")[1])
+
+        cur.execute(
+            "DELETE FROM listings WHERE id=%s AND user_id=%s",
+            (listing_id, chat_id)
+        )
+        conn.commit()
+
+        send(chat_id, "🗑 Listing deleted.")
+
+    # RESTART
     elif data == "restart":
         user_state[chat_id] = None
         send_main_menu(chat_id)
@@ -192,7 +222,7 @@ while True:
             if user_state.get(chat_id) == "listing":
 
                 if "wa.me" not in text:
-                    send(chat_id, "❌ Please include WhatsApp link")
+                    send(chat_id, "❌ Add WhatsApp link")
                     continue
 
                 try:
@@ -206,7 +236,7 @@ while True:
                     print("DB ERROR:", e)
 
                 user_state[chat_id] = None
-                send(chat_id, "✅ Listing saved successfully!")
+                send(chat_id, "✅ Saved!")
                 continue
 
             # SEARCH
