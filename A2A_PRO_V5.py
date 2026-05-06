@@ -1,23 +1,14 @@
-import os
 import time
 import requests
 import re
 import psycopg2
-import sys
 
 # =========================
-# ENV VARIABLES
+# CONFIG (HARD-CODED)
 # =========================
-BOT_TOKEN = os.getenv("8628606501:AAGMzru09_Hckmd_I1Xuyoel3GWiqHgeZS4")
-DATABASE_URL = os.getenv("postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway")
+BOT_TOKEN = "8628606501:AAGMzru09_Hckmd_I1Xuyoel3GWiqHgeZS4"
 
-if not BOT_TOKEN:
-    print("❌ BOT_TOKEN missing")
-    sys.exit(1)
-
-if not DATABASE_URL:
-    print("❌ DATABASE_URL missing")
-    sys.exit(1)
+DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway"
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -46,31 +37,29 @@ conn.commit()
 user_state = {}
 
 # =========================
-# TEXT CLEANING
+# CLEAN TEXT
 # =========================
 def clean_text(t):
     t = t.lower()
     t = re.sub(r"[^a-z0-9\s]", " ", t)
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
+    return re.sub(r"\s+", " ", t).strip()
 
 # =========================
-# SIMPLE MATCHING (FAST + STABLE)
+# SIMPLE SCORE
 # =========================
 def score(query, text):
     q = clean_text(query)
     t = clean_text(text)
 
-    score = 0
-
+    s = 0
     if q in t:
-        score += 2
+        s += 2
 
     for w in q.split():
         if w in t:
-            score += 0.5
+            s += 0.5
 
-    return score
+    return s
 
 # =========================
 # SEND MESSAGE
@@ -78,8 +67,7 @@ def score(query, text):
 def send(chat_id, text, reply_markup=None):
     data = {
         "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown"
+        "text": text
     }
     if reply_markup:
         data["reply_markup"] = reply_markup
@@ -101,32 +89,33 @@ def send_menu(chat_id):
     send(chat_id, "🚀 Welcome to A2A Marketplace", keyboard)
 
 # =========================
-# CALLBACK
+# CALLBACK HANDLER
 # =========================
 def handle_callback(cb):
     chat_id = cb["message"]["chat"]["id"]
     data = cb["data"]
 
-    requests.post(BASE_URL + "/answerCallbackQuery",
-                  data={"callback_query_id": cb["id"]})
+    requests.post(
+        BASE_URL + "/answerCallbackQuery",
+        data={"callback_query_id": cb["id"]}
+    )
 
     if data == "list":
         user_state[chat_id] = "listing"
-        send(chat_id,
-             "🏠 Send your listing:\nExample:\nDamac 3BR price 3.5M\nhttps://wa.me/971XXXX")
+        send(chat_id, "🏠 Send listing + WhatsApp link")
 
     elif data == "search":
-        send(chat_id, "🔎 Type your search (e.g. Damac 3BR under 4M)")
+        send(chat_id, "🔎 Type search")
 
     elif data == "manage":
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
 
         if not rows:
-            send(chat_id, "📭 No listings found.")
+            send(chat_id, "No listings found.")
             return
 
-        for r in rows[:10]:
+        for r in rows:
             send(chat_id, f"📄 {r[1]}")
 
 # =========================
@@ -151,7 +140,6 @@ while True:
         for update in data.get("result", []):
             offset = update["update_id"] + 1
 
-            # CALLBACK
             if "callback_query" in update:
                 handle_callback(update["callback_query"])
                 continue
@@ -173,21 +161,18 @@ while True:
             if user_state.get(chat_id) == "listing":
 
                 if "wa.me" not in text:
-                    send(chat_id, "❌ Please include WhatsApp link")
+                    send(chat_id, "❌ Add WhatsApp link")
                     continue
 
-                try:
-                    cur.execute("""
-                        INSERT INTO listings (user_id, location, beds, price, raw, created_at)
-                        VALUES (%s,%s,%s,%s,%s,%s)
-                        ON CONFLICT (raw) DO NOTHING
-                    """, (chat_id, None, None, None, text, int(time.time())))
-                    conn.commit()
-                except Exception as e:
-                    print("DB ERROR:", e)
+                cur.execute("""
+                    INSERT INTO listings (user_id, location, beds, price, raw, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (raw) DO NOTHING
+                """, (chat_id, None, None, None, text, int(time.time())))
 
+                conn.commit()
                 user_state[chat_id] = None
-                send(chat_id, "✅ Listing saved!")
+                send(chat_id, "✅ Saved!")
                 continue
 
             # SEARCH
@@ -207,10 +192,10 @@ while True:
             if results:
                 out = "🎯 MATCHES:\n\n"
                 for r in results[:5]:
-                    out += f"{r[0]}\n\n"
+                    out += r[0] + "\n\n"
                 send(chat_id, out)
             else:
-                send(chat_id, "⏳ No matches found")
+                send(chat_id, "⏳ No matches")
 
         time.sleep(1)
 
