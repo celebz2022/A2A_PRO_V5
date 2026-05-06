@@ -19,16 +19,63 @@ conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
 cur.execute("""
+# =========================
+# GLOBAL DEDUP CACHE
+# =========================
+shown_cache = set()
+
+# =========================
+# USER STATE
+# =========================
+user_state = {}
+
+# =========================
+# WELCOME MESSAGE
+# =========================
+WELCOME_MESSAGE = """
+🚀 Welcome to A2A_PRO Marketplace  
+👉 https://t.me/a2aprobot  
+
+🏠 *How to List a Property:*  
+1. Tap *🏠 List Property*  
+2. Send your listing  
+3. Include your WhatsApp link  
+
+Example:  
+Damac Heights 3BR Vacant price: 3.5M  
+https://wa.me/971XXXXXXXXX  
+
+🔎 *How to Find a Property:*  
+1. Tap *🔎 Find Property*  
+2. Type what you need  
+
+Examples:  
+• Damac Heights under 4M  
+• Emaar Oasis under 16M  
+• Lake Terrace 3BR under 2.6M  
+
+⚡ Real listings. Direct WhatsApp contact.  
+👇 Choose an option below to start
+"""
+
+# =========================
+# DATABASE
+# =========================
+conn = sqlite3.connect("a2a_v4.db", check_same_thread=False)
+cur = conn.cursor()
+
+cur.execute("""
 CREATE TABLE IF NOT EXISTS listings (
-    id SERIAL PRIMARY KEY,
-    user_id BIGINT,
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
     location TEXT,
     beds TEXT,
-    price TEXT,
+    price REAL,
     raw TEXT UNIQUE,
-    created_at BIGINT
+    created_at INTEGER
 )
 """)
+
 conn.commit()
 
 # =========================
