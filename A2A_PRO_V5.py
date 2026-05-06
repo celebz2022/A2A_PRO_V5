@@ -3,30 +3,26 @@ import time
 import requests
 import re
 import psycopg2
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+import sys
 
 # =========================
-# ENV VARIABLES (IMPORTANT)
+# ENV VARIABLES
 # =========================
 BOT_TOKEN = os.getenv("8628606501:AAGMzru09_Hckmd_I1Xuyoel3GWiqHgeZS4")
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("https://api.telegram.org/bot{BOT_TOKEN}")
+
+if not BOT_TOKEN:
+    print("❌ BOT_TOKEN missing")
+    sys.exit(1)
+
+if not DATABASE_URL:
+    print("❌ DATABASE_URL missing")
+    sys.exit(1)
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # =========================
-# AI MODEL
-# =========================
-model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
-
-# =========================
-# MEMORY
-# =========================
-shown_cache = set()
-user_state = {}
-
-# =========================
-# DATABASE (POSTGRES)
+# DATABASE
 # =========================
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
@@ -45,6 +41,11 @@ CREATE TABLE IF NOT EXISTS listings (
 conn.commit()
 
 # =========================
+# MEMORY
+# =========================
+user_state = {}
+
+# =========================
 # TEXT CLEANING
 # =========================
 def clean_text(t):
@@ -52,6 +53,24 @@ def clean_text(t):
     t = re.sub(r"[^a-z0-9\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
+
+# =========================
+# SIMPLE MATCHING (FAST + STABLE)
+# =========================
+def score(query, text):
+    q = clean_text(query)
+    t = clean_text(text)
+
+    score = 0
+
+    if q in t:
+        score += 2
+
+    for w in q.split():
+        if w in t:
+            score += 0.5
+
+    return score
 
 # =========================
 # SEND MESSAGE
@@ -68,7 +87,7 @@ def send(chat_id, text, reply_markup=None):
     requests.post(BASE_URL + "/sendMessage", json=data)
 
 # =========================
-# START MENU
+# MENU
 # =========================
 def send_menu(chat_id):
     keyboard = {
@@ -82,19 +101,7 @@ def send_menu(chat_id):
     send(chat_id, "🚀 Welcome to A2A Marketplace", keyboard)
 
 # =========================
-# SCORE MATCHING
-# =========================
-def score(query, text):
-    try:
-        return cosine_similarity(
-            [model.encode(query)],
-            [model.encode(text)]
-        )[0][0]
-    except:
-        return 0
-
-# =========================
-# CALLBACK HANDLER
+# CALLBACK
 # =========================
 def handle_callback(cb):
     chat_id = cb["message"]["chat"]["id"]
@@ -106,7 +113,7 @@ def handle_callback(cb):
     if data == "list":
         user_state[chat_id] = "listing"
         send(chat_id,
-             "🏠 Send your listing:\nExample:\nDamac 3BR 3.5M\nhttps://wa.me/971XXXX")
+             "🏠 Send your listing:\nExample:\nDamac 3BR price 3.5M\nhttps://wa.me/971XXXX")
 
     elif data == "search":
         send(chat_id, "🔎 Type your search (e.g. Damac 3BR under 4M)")
@@ -116,10 +123,10 @@ def handle_callback(cb):
         rows = cur.fetchall()
 
         if not rows:
-            send(chat_id, "No listings found.")
+            send(chat_id, "📭 No listings found.")
             return
 
-        for r in rows:
+        for r in rows[:10]:
             send(chat_id, f"📄 {r[1]}")
 
 # =========================
@@ -135,71 +142,78 @@ def get_updates(offset=None):
 # MAIN LOOP
 # =========================
 offset = None
-print("BOT RUNNING...")
+print("🚀 BOT RUNNING...")
 
 while True:
-    data = get_updates(offset)
+    try:
+        data = get_updates(offset)
 
-    for update in data.get("result", []):
-        offset = update["update_id"] + 1
+        for update in data.get("result", []):
+            offset = update["update_id"] + 1
 
-        # CALLBACKS
-        if "callback_query" in update:
-            handle_callback(update["callback_query"])
-            continue
-
-        msg = update.get("message")
-        if not msg:
-            continue
-
-        text = msg.get("text", "")
-        chat_id = msg["chat"]["id"]
-
-        # START
-        if "/start" in text:
-            user_state[chat_id] = None
-            send_menu(chat_id)
-            continue
-
-        # SAVE LISTING
-        if user_state.get(chat_id) == "listing":
-            if "wa.me" not in text:
-                send(chat_id, "❌ Add WhatsApp link")
+            # CALLBACK
+            if "callback_query" in update:
+                handle_callback(update["callback_query"])
                 continue
 
-            try:
-                cur.execute("""
-                    INSERT INTO listings (user_id, location, beds, price, raw, created_at)
-                    VALUES (%s,%s,%s,%s,%s,%s)
-                """, (chat_id, None, None, None, text, int(time.time())))
-                conn.commit()
-            except:
-                pass
+            msg = update.get("message")
+            if not msg:
+                continue
 
-            user_state[chat_id] = None
-            send(chat_id, "✅ Saved!")
-            continue
+            text = msg.get("text", "")
+            chat_id = msg["chat"]["id"]
 
-        # SEARCH
-        cur.execute("SELECT * FROM listings")
-        rows = cur.fetchall()
+            # START
+            if "/start" in text.lower():
+                user_state[chat_id] = None
+                send_menu(chat_id)
+                continue
 
-        results = []
+            # SAVE LISTING
+            if user_state.get(chat_id) == "listing":
 
-        for r in rows:
-            txt = r[5]
-            s = score(text, txt)
-            if s > 0.5:
-                results.append((txt, s))
+                if "wa.me" not in text:
+                    send(chat_id, "❌ Please include WhatsApp link")
+                    continue
 
-        results.sort(key=lambda x: x[1], reverse=True)
+                try:
+                    cur.execute("""
+                        INSERT INTO listings (user_id, location, beds, price, raw, created_at)
+                        VALUES (%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (raw) DO NOTHING
+                    """, (chat_id, None, None, None, text, int(time.time())))
+                    conn.commit()
+                except Exception as e:
+                    print("DB ERROR:", e)
 
-        if results:
-            out = "🎯 MATCHES:\n\n"
-            for r in results[:5]:
-                out += f"{r[0]}\n\n"
-            send(chat_id, out)
-        else:
-            send(chat_id, "No matches found")
+                user_state[chat_id] = None
+                send(chat_id, "✅ Listing saved!")
+                continue
 
-    time.sleep(1)
+            # SEARCH
+            cur.execute("SELECT raw FROM listings")
+            rows = cur.fetchall()
+
+            results = []
+
+            for r in rows:
+                txt = r[0]
+                s = score(text, txt)
+                if s > 1:
+                    results.append((txt, s))
+
+            results.sort(key=lambda x: x[1], reverse=True)
+
+            if results:
+                out = "🎯 MATCHES:\n\n"
+                for r in results[:5]:
+                    out += f"{r[0]}\n\n"
+                send(chat_id, out)
+            else:
+                send(chat_id, "⏳ No matches found")
+
+        time.sleep(1)
+
+    except Exception as e:
+        print("ERROR:", e)
+        time.sleep(5)
