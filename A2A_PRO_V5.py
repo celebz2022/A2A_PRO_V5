@@ -152,8 +152,8 @@ def handle_callback(cb):
         "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
 
    elif data == "search":
-    user_state[chat_id] = None
-    send(chat_id, "🔎 Type your search")
+        user_state.pop(chat_id, None)
+        send(chat_id, "🔎 Type your search")
 
     elif data == "manage":
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
@@ -241,9 +241,9 @@ while True:
                 continue
 
             if text == "🔎 Find Property":
-    user_state[chat_id] = None
-    send(chat_id, "🔎 Type your search")
-    continue
+                user_state.pop(chat_id, None)
+                send(chat_id, "🔎 Type your search")
+                continue
 
             if text == "📂 Manage Listings":
                 cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
