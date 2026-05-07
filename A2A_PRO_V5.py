@@ -103,15 +103,20 @@ def bottom_menu():
 # =========================
 # WELCOME MESSAGE
 # =========================
-WELCOME_MESSAGE = """
-🚀 Welcome to A2A Marketplace  
-
-🏠 List Property → add unlimited listings  
-🔎 Find Property → search deals  
-📂 Manage Listings → delete/edit  
-
-⚡ Tip: Use bottom menu for fast access
-"""
+WELCOME_MESSAGE = (
+"🚀 Welcome to A2A_PRO Marketplace\n"
+"👉 https://t.me/a2aprobot\n\n"
+"🏠 How to List Property:\n"
+"1. Tap List Property\n"
+"2. Start sending listings (MULTI MODE)\n"
+"3. Include WhatsApp link\n\n"
+"Example:\n"
+"Damac Heights 3BR price: 3.5M\n"
+"*‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX\n\n"
+"🔎 Search examples:\n"
+"- Damac Height 3BR under 4M\n"
+"- Springs 4BR under 6M\n\n"
+)
 
 # =========================
 # MAIN MENU
@@ -139,7 +144,12 @@ def handle_callback(cb):
     if data == "list":
         user_state[chat_id] = "listing"
         send(chat_id,
-             "🏠 LISTING MODE ON\nSend multiple listings anytime.")
+             "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
+        "You can send unlimited listings.\n"
+        "When done, choose another option.\n\n"
+        "Example:\n"
+        "Damac Heights 3BR price: 3.5M\n"
+        "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
 
     elif data == "search":
         send(chat_id, "🔎 Type your search")
@@ -153,7 +163,27 @@ def handle_callback(cb):
             return
 
         for r in rows[:10]:
-            send(chat_id, f"📄 {r[1]}")
+            keyboard = {
+                "inline_keyboard": [
+                    [{
+                        "text": "❌ Delete",
+                        "callback_data": f"del_{r[0]}"
+                    }]
+                ]
+            }
+
+            send(chat_id, f"📄 {r[1]}", keyboard)
+
+    elif data.startswith("del_"):
+        listing_id = int(data.split("_")[1])
+
+        cur.execute(
+            "DELETE FROM listings WHERE id=%s AND user_id=%s",
+            (listing_id, chat_id)
+        )
+        conn.commit()
+
+        send(chat_id, "🗑 Deleted successfully")
 
     elif data == "restart":
         user_state[chat_id] = None
