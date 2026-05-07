@@ -16,10 +16,12 @@ BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 # SUBSCRIPTION CONFIG (NEW)
 # =========================
 PAYMENT_LINK = "https://exchange.mercuryo.io/?currency=USDT&fiat_amount=50&fiat_currency=AED&merchant_transaction_id=95b6c29c-e252-47b5-a636-0bd799616ad0&network=BINANCESMARTCHAIN&payment_method=card&signature=985a4c3da9c8b76d5e2afa463c2d945f9b3b772ae403e87ef92068bd8e149b56e6447235855cc31f9f75f7b29488f72524a15b3846a0538845e5d6aeff5ec207&theme=trustwallet&utm_medium=referral&utm_source=TrustWallet&widget_id=d13d7a03-f965-4688-b35a-9d208819ff4b&address=0xC329baa91e2dc30A321e0CB937A05D691A5De503"
+
 FREE_LISTINGS = 5
 FREE_SEARCHES = 5
 
 user_usage = {}
+
 # structure:
 # user_usage[user_id] = {"list": 0, "search": 0, "paid": False}
 
@@ -42,14 +44,27 @@ def is_blocked(chat_id, mode):
 
     return False
 
-def paywall_message():
-    return (
+# =========================
+# PAYWALL MESSAGE (UPDATED)
+# =========================
+def paywall_message(chat_id):
+
+    keyboard = {
+        "inline_keyboard": [
+            [{
+                "text": "💳 Subscribe 50 AED / 3 Months",
+                "url": PAYMENT_LINK
+            }]
+        ]
+    }
+
+    send(
+        chat_id,
         "🚫 FREE LIMIT REACHED\n\n"
-        "You have used your free access.\n\n"
         "📦 Subscription: 50 AED / 3 Months\n"
         "✔ Unlimited Listings & Searches\n\n"
-        f"💳 Pay here: {PAYMENT_LINK}\n\n"
-        "After payment, contact support to activate access."
+        "💳 Pay with Apple Pay or Credit Card and enjoy full access instantly!",
+        keyboard
     )
 
 # =========================
@@ -92,6 +107,7 @@ def score(query, text):
     t = clean_text(text)
 
     s = 0
+
     if q in t:
         s += 2
 
@@ -109,6 +125,7 @@ def send(chat_id, text, reply_markup=None):
         "chat_id": chat_id,
         "text": text
     }
+
     if reply_markup:
         payload["reply_markup"] = reply_markup
 
@@ -179,30 +196,40 @@ def handle_callback(cb):
 
     ensure_user(chat_id)
 
-    requests.post(BASE_URL + "/answerCallbackQuery",
-                  data={"callback_query_id": cb["id"]})
+    requests.post(
+        BASE_URL + "/answerCallbackQuery",
+        data={"callback_query_id": cb["id"]}
+    )
 
     if data == "list":
 
         if is_blocked(chat_id, "list"):
-            send(chat_id, paywall_message())
+            paywall_message(chat_id)
             return
 
         user_state[chat_id] = "listing"
-        send(chat_id,
-             "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
-             "You can send unlimited listings.\n"
-             "When done, choose another option.\n\n"
-             "Example:\n"
-             "Damac Heights 3BR price: 3.5M\n"
-             "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
+
+        send(
+            chat_id,
+            "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
+            "You can send unlimited listings.\n"
+            "When done, choose another option.\n\n"
+            "Example:\n"
+            "Damac Heights 3BR price: 3.5M\n"
+            "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX"
+        )
 
     elif data == "search":
         user_state[chat_id] = None
         send(chat_id, "🔎 Type your search")
 
     elif data == "manage":
-        cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
+
+        cur.execute(
+            "SELECT id, raw FROM listings WHERE user_id=%s",
+            (chat_id,)
+        )
+
         rows = cur.fetchall()
 
         if not rows:
@@ -210,6 +237,7 @@ def handle_callback(cb):
             return
 
         for r in rows[:10]:
+
             keyboard = {
                 "inline_keyboard": [
                     [{
@@ -222,12 +250,14 @@ def handle_callback(cb):
             send(chat_id, f"📄 {r[1]}", keyboard)
 
     elif data.startswith("del_"):
+
         listing_id = int(data.split("_")[1])
 
         cur.execute(
             "DELETE FROM listings WHERE id=%s AND user_id=%s",
             (listing_id, chat_id)
         )
+
         conn.commit()
 
         send(chat_id, "🗑 Deleted successfully")
@@ -240,22 +270,29 @@ def handle_callback(cb):
 # GET UPDATES
 # =========================
 def get_updates(offset=None):
-    return requests.get(BASE_URL + "/getUpdates", params={
-        "timeout": 10,
-        "offset": offset
-    }).json()
+    return requests.get(
+        BASE_URL + "/getUpdates",
+        params={
+            "timeout": 10,
+            "offset": offset
+        }
+    ).json()
 
 # =========================
 # MAIN LOOP
 # =========================
 offset = None
+
 print("🚀 BOT RUNNING")
 
 while True:
+
     try:
+
         data = get_updates(offset)
 
         for update in data.get("result", []):
+
             offset = update["update_id"] + 1
 
             if "callback_query" in update:
@@ -263,6 +300,7 @@ while True:
                 continue
 
             msg = update.get("message")
+
             if not msg:
                 continue
 
@@ -271,33 +309,55 @@ while True:
 
             ensure_user(chat_id)
 
+            # =========================
+            # START
+            # =========================
             if "/start" in text.lower():
+
                 user_state[chat_id] = None
                 send_main_menu(chat_id)
                 continue
 
+            # =========================
+            # LIST PROPERTY
+            # =========================
             if text == "🏠 List Property":
 
                 if is_blocked(chat_id, "list"):
-                    send(chat_id, paywall_message())
+                    paywall_message(chat_id)
                     continue
 
                 user_state[chat_id] = "listing"
+
                 send(chat_id, "🏠 LISTING MODE ON")
+
                 continue
 
+            # =========================
+            # SEARCH PROPERTY
+            # =========================
             if text == "🔎 Find Property":
 
                 if is_blocked(chat_id, "search"):
-                    send(chat_id, paywall_message())
+                    paywall_message(chat_id)
                     continue
 
                 user_state[chat_id] = None
+
                 send(chat_id, "🔎 Type your search")
+
                 continue
 
+            # =========================
+            # MANAGE
+            # =========================
             if text == "📂 Manage Listings":
-                cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
+
+                cur.execute(
+                    "SELECT id, raw FROM listings WHERE user_id=%s",
+                    (chat_id,)
+                )
+
                 rows = cur.fetchall()
 
                 if not rows:
@@ -306,11 +366,18 @@ while True:
 
                 for r in rows[:10]:
                     send(chat_id, f"📄 {r[1]}")
+
                 continue
 
+            # =========================
+            # RESTART
+            # =========================
             if text == "🔄 Restart":
+
                 user_state[chat_id] = None
+
                 send_main_menu(chat_id)
+
                 continue
 
             # =========================
@@ -319,7 +386,7 @@ while True:
             if user_state.get(chat_id) == "listing":
 
                 if is_blocked(chat_id, "list"):
-                    send(chat_id, paywall_message())
+                    paywall_message(chat_id)
                     continue
 
                 if "wa.me" not in text:
@@ -327,11 +394,21 @@ while True:
                     continue
 
                 try:
+
                     cur.execute("""
-                        INSERT INTO listings (user_id, location, beds, price, raw, created_at)
+                        INSERT INTO listings
+                        (user_id, location, beds, price, raw, created_at)
                         VALUES (%s,%s,%s,%s,%s,%s)
                         ON CONFLICT (raw) DO NOTHING
-                    """, (chat_id, None, None, None, text, int(time.time())))
+                    """, (
+                        chat_id,
+                        None,
+                        None,
+                        None,
+                        text,
+                        int(time.time())
+                    ))
+
                     conn.commit()
 
                     user_usage[chat_id]["list"] += 1
@@ -340,24 +417,30 @@ while True:
                     print("DB ERROR:", e)
 
                 send(chat_id, "✅ Saved! Send another listing.")
+
                 continue
 
             # =========================
             # SEARCH MODE
             # =========================
             if is_blocked(chat_id, "search"):
-                send(chat_id, paywall_message())
+
+                paywall_message(chat_id)
+
                 continue
 
             user_usage[chat_id]["search"] += 1
 
             cur.execute("SELECT raw FROM listings")
+
             rows = cur.fetchall()
 
             results = []
 
             for r in rows:
+
                 txt = r[0]
+
                 s = score(text, txt)
 
                 if s > 1:
@@ -366,15 +449,21 @@ while True:
             results.sort(key=lambda x: x[1], reverse=True)
 
             if results:
+
                 out = "🎯 MATCHES\n\n"
+
                 for r in results[:5]:
                     out += r[0] + "\n\n"
+
                 send(chat_id, out)
+
             else:
                 send(chat_id, "⏳ No matches found")
 
         time.sleep(1)
 
     except Exception as e:
+
         print("ERROR:", e)
+
         time.sleep(5)
