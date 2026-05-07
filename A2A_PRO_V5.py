@@ -151,8 +151,9 @@ def handle_callback(cb):
         "Damac Heights 3BR price: 3.5M\n"
         "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
 
-    elif data == "search":
-        send(chat_id, "🔎 Type your search")
+   elif data == "search":
+    user_state[chat_id] = None
+    send(chat_id, "🔎 Type your search")
 
     elif data == "manage":
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
@@ -240,8 +241,9 @@ while True:
                 continue
 
             if text == "🔎 Find Property":
-                send(chat_id, "🔎 Type your search")
-                continue
+    user_state[chat_id] = None
+    send(chat_id, "🔎 Type your search")
+    continue
 
             if text == "📂 Manage Listings":
                 cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
