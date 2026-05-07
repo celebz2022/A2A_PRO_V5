@@ -13,6 +13,46 @@ DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # =========================
+# SUBSCRIPTION CONFIG (NEW)
+# =========================
+PAYMENT_LINK = "https://exchange.mercuryo.io/?currency=USDT&fiat_amount=50&fiat_currency=AED&merchant_transaction_id=95b6c29c-e252-47b5-a636-0bd799616ad0&network=BINANCESMARTCHAIN&payment_method=card&signature=985a4c3da9c8b76d5e2afa463c2d945f9b3b772ae403e87ef92068bd8e149b56e6447235855cc31f9f75f7b29488f72524a15b3846a0538845e5d6aeff5ec207&theme=trustwallet&utm_medium=referral&utm_source=TrustWallet&widget_id=d13d7a03-f965-4688-b35a-9d208819ff4b&address=0xC329baa91e2dc30A321e0CB937A05D691A5De503"
+FREE_LISTINGS = 5
+FREE_SEARCHES = 5
+
+user_usage = {}
+# structure:
+# user_usage[user_id] = {"list": 0, "search": 0, "paid": False}
+
+def ensure_user(chat_id):
+    if chat_id not in user_usage:
+        user_usage[chat_id] = {"list": 0, "search": 0, "paid": False}
+
+def is_blocked(chat_id, mode):
+    ensure_user(chat_id)
+    u = user_usage[chat_id]
+
+    if u["paid"]:
+        return False
+
+    if mode == "list" and u["list"] >= FREE_LISTINGS:
+        return True
+
+    if mode == "search" and u["search"] >= FREE_SEARCHES:
+        return True
+
+    return False
+
+def paywall_message():
+    return (
+        "🚫 FREE LIMIT REACHED\n\n"
+        "You have used your free access.\n\n"
+        "📦 Subscription: 50 AED / 3 Months\n"
+        "✔ Unlimited Listings & Searches\n\n"
+        f"💳 Pay here: {PAYMENT_LINK}\n\n"
+        "After payment, contact support to activate access."
+    )
+
+# =========================
 # DATABASE
 # =========================
 conn = psycopg2.connect(DATABASE_URL)
@@ -131,16 +171,23 @@ def send_main_menu(chat_id):
     })
 
 # =========================
-# CALLBACK HANDLER (INLINE BUTTONS)
+# CALLBACK HANDLER
 # =========================
 def handle_callback(cb):
     chat_id = cb["message"]["chat"]["id"]
     data = cb["data"]
 
+    ensure_user(chat_id)
+
     requests.post(BASE_URL + "/answerCallbackQuery",
                   data={"callback_query_id": cb["id"]})
 
     if data == "list":
+
+        if is_blocked(chat_id, "list"):
+            send(chat_id, paywall_message())
+            return
+
         user_state[chat_id] = "listing"
         send(chat_id,
              "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
@@ -222,17 +269,29 @@ while True:
             text = msg.get("text", "")
             chat_id = msg["chat"]["id"]
 
+            ensure_user(chat_id)
+
             if "/start" in text.lower():
                 user_state[chat_id] = None
                 send_main_menu(chat_id)
                 continue
 
             if text == "🏠 List Property":
+
+                if is_blocked(chat_id, "list"):
+                    send(chat_id, paywall_message())
+                    continue
+
                 user_state[chat_id] = "listing"
                 send(chat_id, "🏠 LISTING MODE ON")
                 continue
 
             if text == "🔎 Find Property":
+
+                if is_blocked(chat_id, "search"):
+                    send(chat_id, paywall_message())
+                    continue
+
                 user_state[chat_id] = None
                 send(chat_id, "🔎 Type your search")
                 continue
@@ -254,7 +313,14 @@ while True:
                 send_main_menu(chat_id)
                 continue
 
+            # =========================
+            # LISTING MODE
+            # =========================
             if user_state.get(chat_id) == "listing":
+
+                if is_blocked(chat_id, "list"):
+                    send(chat_id, paywall_message())
+                    continue
 
                 if "wa.me" not in text:
                     send(chat_id, "❌ Add WhatsApp link")
@@ -267,11 +333,23 @@ while True:
                         ON CONFLICT (raw) DO NOTHING
                     """, (chat_id, None, None, None, text, int(time.time())))
                     conn.commit()
+
+                    user_usage[chat_id]["list"] += 1
+
                 except Exception as e:
                     print("DB ERROR:", e)
 
                 send(chat_id, "✅ Saved! Send another listing.")
                 continue
+
+            # =========================
+            # SEARCH MODE
+            # =========================
+            if is_blocked(chat_id, "search"):
+                send(chat_id, paywall_message())
+                continue
+
+            user_usage[chat_id]["search"] += 1
 
             cur.execute("SELECT raw FROM listings")
             rows = cur.fetchall()
