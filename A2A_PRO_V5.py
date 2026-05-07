@@ -124,7 +124,6 @@ WELCOME_MESSAGE = (
 def send_main_menu(chat_id):
     send(chat_id, WELCOME_MESSAGE, inline_menu())
 
-    # send persistent bottom menu
     requests.post(BASE_URL + "/sendMessage", json={
         "chat_id": chat_id,
         "text": "👇 Quick Menu Enabled",
@@ -145,17 +144,17 @@ def handle_callback(cb):
         user_state[chat_id] = "listing"
         send(chat_id,
              "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
-        "You can send unlimited listings.\n"
-        "When done, choose another option.\n\n"
-        "Example:\n"
-        "Damac Heights 3BR price: 3.5M\n"
-        "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
-        
-            elif data == "search":
+             "You can send unlimited listings.\n"
+             "When done, choose another option.\n\n"
+             "Example:\n"
+             "Damac Heights 3BR price: 3.5M\n"
+             "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
+
+    elif data == "search":
         user_state[chat_id] = None
         send(chat_id, "🔎 Type your search")
 
-     elif data == "manage":
+    elif data == "manage":
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
 
@@ -212,7 +211,6 @@ while True:
         for update in data.get("result", []):
             offset = update["update_id"] + 1
 
-            # INLINE CALLBACKS
             if "callback_query" in update:
                 handle_callback(update["callback_query"])
                 continue
@@ -224,22 +222,16 @@ while True:
             text = msg.get("text", "")
             chat_id = msg["chat"]["id"]
 
-            # =========================
-            # START
-            # =========================
             if "/start" in text.lower():
                 user_state[chat_id] = None
                 send_main_menu(chat_id)
                 continue
 
-            # =========================
-            # BOTTOM MENU HANDLER
-            # =========================
             if text == "🏠 List Property":
                 user_state[chat_id] = "listing"
                 send(chat_id, "🏠 LISTING MODE ON")
                 continue
-                
+
             if text == "🔎 Find Property":
                 user_state[chat_id] = None
                 send(chat_id, "🔎 Type your search")
@@ -262,9 +254,6 @@ while True:
                 send_main_menu(chat_id)
                 continue
 
-            # =========================
-            # SAVE LISTINGS (MULTI MODE)
-            # =========================
             if user_state.get(chat_id) == "listing":
 
                 if "wa.me" not in text:
@@ -284,9 +273,6 @@ while True:
                 send(chat_id, "✅ Saved! Send another listing.")
                 continue
 
-            # =========================
-            # SEARCH
-            # =========================
             cur.execute("SELECT raw FROM listings")
             rows = cur.fetchall()
 
