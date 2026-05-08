@@ -2,6 +2,8 @@ import time
 import requests
 import re
 import psycopg2
+from flask import Flask, request
+import threading
 
 # =========================
 # CONFIG
@@ -13,17 +15,20 @@ DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # =========================
-# SUBSCRIPTION CONFIG (NEW)
+# CRYPTOBOT CONFIG
 # =========================
-PAYMENT_LINK = "https://exchange.mercuryo.io/?currency=USDT&fiat_amount=50&fiat_currency=AED&merchant_transaction_id=95b6c29c-e252-47b5-a636-0bd799616ad0&network=BINANCESMARTCHAIN&payment_method=card&signature=985a4c3da9c8b76d5e2afa463c2d945f9b3b772ae403e87ef92068bd8e149b56e6447235855cc31f9f75f7b29488f72524a15b3846a0538845e5d6aeff5ec207&theme=trustwallet&utm_medium=referral&utm_source=TrustWallet&widget_id=d13d7a03-f965-4688-b35a-9d208819ff4b&address=0xC329baa91e2dc30A321e0CB937A05D691A5De503"
+CRYPTOBOT_API_TOKEN = "579100:AAi4VlDKXrA8XrA4CRRL1SW1J2idwuI9RShNN"
 
+app = Flask(__name__)
+pending_invoices = {}
+
+# =========================
+# FREE LIMITS
+# =========================
 FREE_LISTINGS = 5
 FREE_SEARCHES = 5
 
 user_usage = {}
-
-# structure:
-# user_usage[user_id] = {"list": 0, "search": 0, "paid": False}
 
 def ensure_user(chat_id):
     if chat_id not in user_usage:
@@ -45,29 +50,6 @@ def is_blocked(chat_id, mode):
     return False
 
 # =========================
-# PAYWALL MESSAGE (UPDATED)
-# =========================
-def paywall_message(chat_id):
-
-    keyboard = {
-        "inline_keyboard": [
-            [{
-                "text": "💳 Subscribe 50 AED / 3 Months",
-                "url": PAYMENT_LINK
-            }]
-        ]
-    }
-
-    send(
-        chat_id,
-        "🚫 FREE LIMIT REACHED\n\n"
-        "📦 Subscription: 50 AED / 3 Months\n"
-        "✔ Unlimited Listings & Searches\n\n"
-        "💳 Pay with Apple Pay or Credit Card and enjoy full access instantly!",
-        keyboard
-    )
-
-# =========================
 # DATABASE
 # =========================
 conn = psycopg2.connect(DATABASE_URL)
@@ -84,47 +66,120 @@ CREATE TABLE IF NOT EXISTS listings (
     created_at BIGINT
 )
 """)
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS subscriptions (
+    user_id BIGINT PRIMARY KEY,
+    paid BOOLEAN DEFAULT FALSE,
+    expires_at BIGINT
+)
+""")
+
 conn.commit()
 
 # =========================
-# MEMORY
+# CRYPTOBOT INVOICE
 # =========================
-user_state = {}
+def create_invoice(user_id):
+
+    url = "https://pay.crypt.bot/api/createInvoice"
+
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN
+    }
+
+    data = {
+        "asset": "USDT",
+        "amount": 50,
+        "description": "A2A Pro Subscription (3 Months)",
+        "payload": str(user_id)
+    }
+
+    r = requests.post(url, headers=headers, json=data)
+    res = r.json()
+
+    if not res.get("ok"):
+        print("CryptoBot error:", res)
+        return None
+
+    invoice = res["result"]
+    pending_invoices[str(invoice["invoice_id"])] = user_id
+
+    return invoice["pay_url"]
 
 # =========================
-# CLEAN TEXT
+# PAYWALL
 # =========================
-def clean_text(t):
-    t = t.lower()
-    t = re.sub(r"[^a-z0-9\s]", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
+def paywall_message(chat_id):
+
+    payment_url = create_invoice(chat_id)
+
+    if not payment_url:
+        send(chat_id, "❌ Payment error. Try again later.")
+        return
+
+    keyboard = {
+        "inline_keyboard": [
+            [{
+                "text": "💳 Pay 50 AED / 3 Months",
+                "url": payment_url
+            }]
+        ]
+    }
+
+    send(
+        chat_id,
+        "🚫 FREE LIMIT REACHED\n\n"
+        "📦 Subscription: 50 AED / 3 Months\n"
+        "✔ Unlimited Listings & Searches\n\n"
+        "⚡ Instant activation after payment",
+        keyboard
+    )
 
 # =========================
-# SCORE
+# WEBHOOK (CryptoBot)
 # =========================
-def score(query, text):
-    q = clean_text(query)
-    t = clean_text(text)
+@app.route("/crypto-webhook", methods=["POST"])
+def crypto_webhook():
 
-    s = 0
+    data = request.json
 
-    if q in t:
-        s += 2
+    try:
+        user_id = int(data.get("payload"))
 
-    for w in q.split():
-        if w in t:
-            s += 0.5
+        cur.execute("""
+            INSERT INTO subscriptions (user_id, paid, expires_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET paid=EXCLUDED.paid, expires_at=EXCLUDED.expires_at
+        """, (
+            user_id,
+            True,
+            int(time.time()) + (90 * 24 * 60 * 60)
+        ))
 
-    return s
+        conn.commit()
+
+        user_usage[user_id] = {
+            "list": 0,
+            "search": 0,
+            "paid": True
+        }
+
+        send(user_id, "✅ Payment successful!\n🚀 Access unlocked")
+
+        return {"ok": True}
+
+    except Exception as e:
+        print("Webhook error:", e)
+        return {"ok": False}, 500
 
 # =========================
 # SEND MESSAGE
 # =========================
 def send(chat_id, text, reply_markup=None):
-    payload = {
-        "chat_id": chat_id,
-        "text": text
-    }
+
+    payload = {"chat_id": chat_id, "text": text}
 
     if reply_markup:
         payload["reply_markup"] = reply_markup
@@ -132,33 +187,29 @@ def send(chat_id, text, reply_markup=None):
     requests.post(BASE_URL + "/sendMessage", json=payload)
 
 # =========================
-# INLINE MENU (TOP)
+# MENU (NO MANAGE LISTINGS)
 # =========================
 def inline_menu():
     return {
         "inline_keyboard": [
             [{"text": "🏠 List Property", "callback_data": "list"}],
             [{"text": "🔎 Find Property", "callback_data": "search"}],
-            [{"text": "📂 Manage Listings", "callback_data": "manage"}],
             [{"text": "🔄 Restart", "callback_data": "restart"}]
         ]
     }
 
-# =========================
-# BOTTOM MENU (PERSISTENT)
-# =========================
 def bottom_menu():
     return {
         "keyboard": [
             ["🏠 List Property", "🔎 Find Property"],
-            ["📂 Manage Listings", "🔄 Restart"]
+            ["🔄 Restart"]
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False
     }
 
 # =========================
-# WELCOME MESSAGE
+# WELCOME MESSAGE (RESTORED)
 # =========================
 WELCOME_MESSAGE = (
 "🚀 Welcome to A2A_PRO Marketplace\n"
@@ -169,7 +220,7 @@ WELCOME_MESSAGE = (
 "3. Include WhatsApp link\n\n"
 "Example:\n"
 "Damac Heights 3BR price: 3.5M\n"
-"*‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX\n\n"
+"‼️ Mandatory WhatsApp Link https://wa.me/971XXXXXXXXX\n\n"
 "🔎 Search examples:\n"
 "- Damac Height 3BR under 4M\n"
 "- Springs 4BR under 6M\n\n"
@@ -179,6 +230,7 @@ WELCOME_MESSAGE = (
 # MAIN MENU
 # =========================
 def send_main_menu(chat_id):
+
     send(chat_id, WELCOME_MESSAGE, inline_menu())
 
     requests.post(BASE_URL + "/sendMessage", json={
@@ -188,9 +240,37 @@ def send_main_menu(chat_id):
     })
 
 # =========================
-# CALLBACK HANDLER
+# MEMORY
+# =========================
+user_state = {}
+
+# =========================
+# CLEAN + SCORE
+# =========================
+def clean_text(t):
+    t = t.lower()
+    t = re.sub(r"[^a-z0-9\s]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+def score(query, text):
+    q = clean_text(query)
+    t = clean_text(text)
+
+    s = 0
+    if q in t:
+        s += 2
+
+    for w in q.split():
+        if w in t:
+            s += 0.5
+
+    return s
+
+# =========================
+# CALLBACK HANDLER (NO MANAGE)
 # =========================
 def handle_callback(cb):
+
     chat_id = cb["message"]["chat"]["id"]
     data = cb["data"]
 
@@ -208,88 +288,39 @@ def handle_callback(cb):
             return
 
         user_state[chat_id] = "listing"
+        send(chat_id, "🏠 LISTING MODE ACTIVE\nSend your listings with WhatsApp link")
+        return
 
-        send(
-            chat_id,
-            "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
-            "You can send unlimited listings.\n"
-            "When done, choose another option.\n\n"
-            "Example:\n"
-            "Damac Heights 3BR price: 3.5M\n"
-            "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX"
-        )
-
-    elif data == "search":
+    if data == "search":
         user_state[chat_id] = None
         send(chat_id, "🔎 Type your search")
+        return
 
-    elif data == "manage":
-
-        cur.execute(
-            "SELECT id, raw FROM listings WHERE user_id=%s",
-            (chat_id,)
-        )
-
-        rows = cur.fetchall()
-
-        if not rows:
-            send(chat_id, "📭 No listings found")
-            return
-
-        for r in rows[:10]:
-
-            keyboard = {
-                "inline_keyboard": [
-                    [{
-                        "text": "❌ Delete",
-                        "callback_data": f"del_{r[0]}"
-                    }]
-                ]
-            }
-
-            send(chat_id, f"📄 {r[1]}", keyboard)
-
-    elif data.startswith("del_"):
-
-        listing_id = int(data.split("_")[1])
-
-        cur.execute(
-            "DELETE FROM listings WHERE id=%s AND user_id=%s",
-            (listing_id, chat_id)
-        )
-
-        conn.commit()
-
-        send(chat_id, "🗑 Deleted successfully")
-
-    elif data == "restart":
+    if data == "restart":
         user_state[chat_id] = None
         send_main_menu(chat_id)
+        return
 
 # =========================
-# GET UPDATES
+# FLASK START
 # =========================
-def get_updates(offset=None):
-    return requests.get(
-        BASE_URL + "/getUpdates",
-        params={
-            "timeout": 10,
-            "offset": offset
-        }
-    ).json()
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
+
+threading.Thread(target=run_flask).start()
 
 # =========================
-# MAIN LOOP
+# BOT LOOP
 # =========================
 offset = None
-
 print("🚀 BOT RUNNING")
 
 while True:
-
     try:
-
-        data = get_updates(offset)
+        data = requests.get(
+            BASE_URL + "/getUpdates",
+            params={"timeout": 10, "offset": offset}
+        ).json()
 
         for update in data.get("result", []):
 
@@ -300,7 +331,6 @@ while True:
                 continue
 
             msg = update.get("message")
-
             if not msg:
                 continue
 
@@ -309,18 +339,13 @@ while True:
 
             ensure_user(chat_id)
 
-            # =========================
             # START
-            # =========================
             if "/start" in text.lower():
-
                 user_state[chat_id] = None
                 send_main_menu(chat_id)
                 continue
 
-            # =========================
-            # LIST PROPERTY
-            # =========================
+            # LIST BUTTON
             if text == "🏠 List Property":
 
                 if is_blocked(chat_id, "list"):
@@ -328,142 +353,68 @@ while True:
                     continue
 
                 user_state[chat_id] = "listing"
-
                 send(chat_id, "🏠 LISTING MODE ON")
-
                 continue
 
-            # =========================
-            # SEARCH PROPERTY
-            # =========================
+            # SEARCH BUTTON
             if text == "🔎 Find Property":
 
                 if is_blocked(chat_id, "search"):
                     paywall_message(chat_id)
                     continue
 
-                user_state[chat_id] = None
-
                 send(chat_id, "🔎 Type your search")
-
                 continue
 
-            # =========================
-            # MANAGE
-            # =========================
-            if text == "📂 Manage Listings":
-
-                cur.execute(
-                    "SELECT id, raw FROM listings WHERE user_id=%s",
-                    (chat_id,)
-                )
-
-                rows = cur.fetchall()
-
-                if not rows:
-                    send(chat_id, "📭 No listings")
-                    continue
-
-                for r in rows[:10]:
-                    send(chat_id, f"📄 {r[1]}")
-
-                continue
-
-            # =========================
             # RESTART
-            # =========================
             if text == "🔄 Restart":
-
                 user_state[chat_id] = None
-
                 send_main_menu(chat_id)
-
                 continue
 
-            # =========================
             # LISTING MODE
-            # =========================
             if user_state.get(chat_id) == "listing":
-
-                if is_blocked(chat_id, "list"):
-                    paywall_message(chat_id)
-                    continue
 
                 if "wa.me" not in text:
                     send(chat_id, "❌ Add WhatsApp link")
                     continue
 
-                try:
+                cur.execute("""
+                    INSERT INTO listings (user_id, raw, created_at)
+                    VALUES (%s,%s,%s)
+                    ON CONFLICT (raw) DO NOTHING
+                """, (chat_id, text, int(time.time())))
 
-                    cur.execute("""
-                        INSERT INTO listings
-                        (user_id, location, beds, price, raw, created_at)
-                        VALUES (%s,%s,%s,%s,%s,%s)
-                        ON CONFLICT (raw) DO NOTHING
-                    """, (
-                        chat_id,
-                        None,
-                        None,
-                        None,
-                        text,
-                        int(time.time())
-                    ))
+                conn.commit()
 
-                    conn.commit()
-
-                    user_usage[chat_id]["list"] += 1
-
-                except Exception as e:
-                    print("DB ERROR:", e)
+                user_usage[chat_id]["list"] += 1
 
                 send(chat_id, "✅ Saved! Send another listing.")
-
                 continue
 
-            # =========================
             # SEARCH MODE
-            # =========================
             if is_blocked(chat_id, "search"):
-
                 paywall_message(chat_id)
-
                 continue
 
             user_usage[chat_id]["search"] += 1
 
             cur.execute("SELECT raw FROM listings")
-
             rows = cur.fetchall()
 
             results = []
 
             for r in rows:
-
-                txt = r[0]
-
-                s = score(text, txt)
-
-                if s > 1:
-                    results.append((txt, s))
-
-            results.sort(key=lambda x: x[1], reverse=True)
+                if score(text, r[0]) > 1:
+                    results.append(r[0])
 
             if results:
-
-                out = "🎯 MATCHES\n\n"
-
-                for r in results[:5]:
-                    out += r[0] + "\n\n"
-
-                send(chat_id, out)
-
+                send(chat_id, "🎯 MATCHES\n\n" + "\n\n".join(results[:5]))
             else:
                 send(chat_id, "⏳ No matches found")
 
         time.sleep(1)
 
     except Exception as e:
-
         print("ERROR:", e)
-
         time.sleep(5)
