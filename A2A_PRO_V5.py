@@ -124,8 +124,8 @@ def create_invoice(chat_id):
         print("INVOICE RESPONSE:", r)
 
         if not r or not r.get("ok"):
-    print("CRYPTO ERROR:", r)
-    return None
+            print("CRYPTO ERROR:", r)
+            return None
 
         return r["result"]["pay_url"]
 
