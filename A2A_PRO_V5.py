@@ -13,7 +13,7 @@ BOT_TOKEN = "8628606501:AAGMzru09_Hckmd_I1Xuyoel3GWiqHgeZS4"
 DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway"
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-CRYPTOBOT_API_TOKEN = "579100:AAi4VlDKXrA8CRRL1SW1J2idwuI9RShNN"
+CRYPTOBOT_API_TOKEN = "579100:AALHabP1Hs3yFD1y6InghzZPD9dfyj7M6gG"
 
 app = Flask(__name__)
 PORT = int(os.environ.get("PORT", 8080))
