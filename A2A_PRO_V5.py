@@ -174,11 +174,7 @@ def handle_callback(cb):
         send(chat_id, "🔎 Type search")
         return
 
-    # =========================
-    # MANAGE (FIXED)
-    # =========================
     if data == "manage":
-
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
 
@@ -187,20 +183,17 @@ def handle_callback(cb):
             return
 
         for r in rows[:50]:
-
             keyboard = {
                 "inline_keyboard": [[{
                     "text": "❌ Delete",
                     "callback_data": f"del_{r[0]}"
                 }]]
             }
-
             send(chat_id, f"📄 {r[1]}", keyboard)
 
         return
 
     if data.startswith("del_"):
-
         listing_id = int(data.split("_")[1])
 
         cur.execute(
@@ -209,7 +202,6 @@ def handle_callback(cb):
         )
 
         conn.commit()
-
         send(chat_id, "🗑 Deleted successfully")
         return
 
@@ -267,31 +259,28 @@ def run_bot():
 
                     user_state[chat_id] = "listing"
                     send(chat_id, "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
-            "You can send unlimited listings.\n"
-            "When done, choose another option.\n\n"
-            "Example:\n"
-            "Damac Heights 3BR price: 3.5M\n"
-            "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
+                        "You can send unlimited listings.\n"
+                        "When done, choose another option.\n\n"
+                        "Example:\n"
+                        "Damac Heights 3BR price: 3.5M\n"
+                        "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
                     continue
 
                 # =========================
-                # SEARCH
+                # SEARCH (FIXED ONLY PART)
                 # =========================
                 if text == "🔎 Find Property":
 
-    # only block if NOT in listing mode
-if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
-    send(chat_id, "❌ Limit reached")
-    continue
+                    if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
+                        send(chat_id, "❌ Limit reached")
+                        continue
 
-    # FIX: force exit listing mode
-    user_state[chat_id] = None
-
-    send(chat_id, "🔎 Type search")
-    continue
+                    user_state[chat_id] = None
+                    send(chat_id, "🔎 Type search")
+                    continue
 
                 # =========================
-                # FIXED: MANAGE BUTTON (BOTTOM MENU)
+                # MANAGE
                 # =========================
                 if text == "📂 Manage Listings":
 
@@ -324,7 +313,6 @@ if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
                     """, (chat_id, text, int(time.time())))
 
                     conn.commit()
-
                     user_usage[chat_id]["list"] += 1
 
                     send(chat_id, "✅ Saved")
@@ -333,10 +321,9 @@ if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
                 # =========================
                 # SEARCH MODE
                 # =========================
-                # only block if NOT in listing mode
-if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
-    send(chat_id, "❌ Limit reached")
-    continue
+                if is_blocked(chat_id, "search"):
+                    send(chat_id, "❌ Limit reached")
+                    continue
 
                 user_usage[chat_id]["search"] += 1
 
@@ -359,7 +346,7 @@ if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
             time.sleep(3)
 
 # =========================
-# FLASK WEBHOOK (CRYPTOBOT)
+# FLASK WEBHOOK
 # =========================
 @app.route("/crypto-webhook", methods=["POST"])
 def crypto_webhook():
@@ -388,7 +375,7 @@ def crypto_webhook():
         return {"ok": False}
 
 # =========================
-# START FLASK
+# START
 # =========================
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
