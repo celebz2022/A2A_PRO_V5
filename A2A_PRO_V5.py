@@ -107,7 +107,7 @@ def create_invoice(chat_id):
     try:
 
         r = requests.post(
-            "https://pay.crypt.bot/api/invoice/create",
+            "https://pay.crypt.bot/api/invoice",
             headers={
                 "Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN
             },
@@ -123,8 +123,9 @@ def create_invoice(chat_id):
 
         print("INVOICE RESPONSE:", r)
 
-        if not r.get("ok"):
-            return None
+        if not r or not r.get("ok"):
+    print("CRYPTO ERROR:", r)
+    return None
 
         return r["result"]["pay_url"]
 
