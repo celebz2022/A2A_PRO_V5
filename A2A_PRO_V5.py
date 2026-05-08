@@ -119,7 +119,19 @@ def create_invoice(chat_id):
             }
         ).json()
 
-        return r["result"]["pay_url"]
+        # ✅ FIX: safe parsing (prevents payment system crash)
+        if not r.get("ok"):
+            print("INVOICE API ERROR RESPONSE:", r)
+            return None
+
+        result = r.get("result", {})
+        pay_url = result.get("pay_url")
+
+        if not pay_url:
+            print("NO PAY URL:", r)
+            return None
+
+        return pay_url
 
     except Exception as e:
 
