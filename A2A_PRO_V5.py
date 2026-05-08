@@ -21,38 +21,7 @@ PORT = int(os.environ.get("PORT", 8080))
 # =========================
 # LIMITS
 # =========================
-# =========================
-# LISTING MODE
-# =========================
-if user_state.get(chat_id) == "listing":
-
-    cur.execute(
-        "SELECT COUNT(*) FROM listings WHERE user_id=%s",
-        (chat_id,)
-    )
-
-    total_listings = cur.fetchone()[0]
-
-    if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
-        send(chat_id, "❌ Free listing limit reached")
-        continue
-
-    if "wa.me" not in text:
-        send(chat_id, "❌ Add WhatsApp link")
-        continue
-
-    cur.execute("""
-        INSERT INTO listings (user_id, raw, created_at)
-        VALUES (%s,%s,%s)
-        ON CONFLICT DO NOTHING
-    """, (chat_id, text, int(time.time())))
-
-    conn.commit()
-
-    user_usage[chat_id]["list"] += 1
-
-    send(chat_id, "✅ Saved")
-    continue
+FREE_LISTINGS = 1
 FREE_SEARCHES = 5
 
 user_usage = {}
@@ -114,8 +83,10 @@ user_state = {}
 # =========================
 def send(chat_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "text": text}
+
     if reply_markup:
         payload["reply_markup"] = reply_markup
+
     requests.post(BASE_URL + "/sendMessage", json=payload)
 
 # =========================
@@ -131,15 +102,18 @@ def score(q, t):
     t = clean_text(t)
 
     s = 0
+
     if q in t:
         s += 2
+
     for w in q.split():
         if w in t:
             s += 0.5
+
     return s
 
 # =========================
-# MENU (UNCHANGED)
+# MENU
 # =========================
 def bottom_menu():
     return {
@@ -167,6 +141,7 @@ WELCOME_MESSAGE = (
 )
 
 def send_main_menu(chat_id):
+
     send(chat_id, WELCOME_MESSAGE, {
         "inline_keyboard": [
             [{"text": "🏠 List Property", "callback_data": "list"}],
@@ -192,11 +167,26 @@ def handle_callback(cb):
 
     ensure_user(chat_id)
 
-    requests.post(BASE_URL + "/answerCallbackQuery",
-                  data={"callback_query_id": cb["id"]})
+    requests.post(
+        BASE_URL + "/answerCallbackQuery",
+        data={"callback_query_id": cb["id"]}
+    )
 
     if data == "list":
+
+        cur.execute(
+            "SELECT COUNT(*) FROM listings WHERE user_id=%s",
+            (chat_id,)
+        )
+
+        total_listings = cur.fetchone()[0]
+
+        if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
+            send(chat_id, "❌ Free listing limit reached")
+            return
+
         user_state[chat_id] = "listing"
+
         send(chat_id, "🏠 LISTING MODE ACTIVE (MULTI)")
         return
 
@@ -206,7 +196,12 @@ def handle_callback(cb):
         return
 
     if data == "manage":
-        cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
+
+        cur.execute(
+            "SELECT id, raw FROM listings WHERE user_id=%s",
+            (chat_id,)
+        )
+
         rows = cur.fetchall()
 
         if not rows:
@@ -214,17 +209,20 @@ def handle_callback(cb):
             return
 
         for r in rows[:50]:
+
             keyboard = {
                 "inline_keyboard": [[{
                     "text": "❌ Delete",
                     "callback_data": f"del_{r[0]}"
                 }]]
             }
+
             send(chat_id, f"📄 {r[1]}", keyboard)
 
         return
 
     if data.startswith("del_"):
+
         listing_id = int(data.split("_")[1])
 
         cur.execute(
@@ -233,6 +231,7 @@ def handle_callback(cb):
         )
 
         conn.commit()
+
         send(chat_id, "🗑 Deleted successfully")
         return
 
@@ -252,9 +251,13 @@ def run_bot():
     while True:
 
         try:
+
             data = requests.get(
                 BASE_URL + "/getUpdates",
-                params={"timeout": 10, "offset": offset}
+                params={
+                    "timeout": 10,
+                    "offset": offset
+                }
             ).json()
 
             for update in data.get("result", []):
@@ -266,6 +269,7 @@ def run_bot():
                     continue
 
                 msg = update.get("message")
+
                 if not msg:
                     continue
 
@@ -275,8 +279,10 @@ def run_bot():
                 ensure_user(chat_id)
 
                 if "/start" in text.lower():
+
                     user_state[chat_id] = None
                     send_main_menu(chat_id)
+
                     continue
 
                 # =========================
@@ -284,21 +290,33 @@ def run_bot():
                 # =========================
                 if text == "🏠 List Property":
 
-                    if is_blocked(chat_id, "list"):
-                        send(chat_id, "❌ Limit reached")
+                    cur.execute(
+                        "SELECT COUNT(*) FROM listings WHERE user_id=%s",
+                        (chat_id,)
+                    )
+
+                    total_listings = cur.fetchone()[0]
+
+                    if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
+                        send(chat_id, "❌ Free listing limit reached")
                         continue
 
                     user_state[chat_id] = "listing"
-                    send(chat_id, "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
-                        "You can send unlimited listings.\n"
+
+                    send(
+                        chat_id,
+                        "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
+                        "You can send listings.\n"
                         "When done, choose another option.\n\n"
                         "Example:\n"
                         "Damac Heights 3BR price: 3.5M\n"
-                        "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
+                        "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX"
+                    )
+
                     continue
 
                 # =========================
-                # SEARCH (FIXED ONLY PART)
+                # SEARCH
                 # =========================
                 if text == "🔎 Find Property":
 
@@ -307,7 +325,9 @@ def run_bot():
                         continue
 
                     user_state[chat_id] = None
+
                     send(chat_id, "🔎 Type search")
+
                     continue
 
                 # =========================
@@ -323,15 +343,32 @@ def run_bot():
 
                     continue
 
+                # =========================
+                # RESTART
+                # =========================
                 if text == "🔄 Restart":
+
                     user_state[chat_id] = None
+
                     send_main_menu(chat_id)
+
                     continue
 
                 # =========================
                 # LISTING MODE
                 # =========================
                 if user_state.get(chat_id) == "listing":
+
+                    cur.execute(
+                        "SELECT COUNT(*) FROM listings WHERE user_id=%s",
+                        (chat_id,)
+                    )
+
+                    total_listings = cur.fetchone()[0]
+
+                    if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
+                        send(chat_id, "❌ Free listing limit reached")
+                        continue
 
                     if "wa.me" not in text:
                         send(chat_id, "❌ Add WhatsApp link")
@@ -341,39 +378,56 @@ def run_bot():
                         INSERT INTO listings (user_id, raw, created_at)
                         VALUES (%s,%s,%s)
                         ON CONFLICT DO NOTHING
-                    """, (chat_id, text, int(time.time())))
+                    """, (
+                        chat_id,
+                        text,
+                        int(time.time())
+                    ))
 
                     conn.commit()
+
                     user_usage[chat_id]["list"] += 1
 
                     send(chat_id, "✅ Saved")
+
                     continue
 
                 # =========================
                 # SEARCH MODE
                 # =========================
                 if is_blocked(chat_id, "search"):
+
                     send(chat_id, "❌ Limit reached")
+
                     continue
 
                 user_usage[chat_id]["search"] += 1
 
                 cur.execute("SELECT raw FROM listings")
+
                 rows = cur.fetchall()
 
                 results = []
 
                 for r in rows:
+
                     if score(text, r[0]) > 1:
                         results.append(r[0])
 
                 if results:
-                    send(chat_id, "🎯 RESULTS\n\n" + "\n\n".join(results[:5]))
+
+                    send(
+                        chat_id,
+                        "🎯 RESULTS\n\n" + "\n\n".join(results[:5])
+                    )
+
                 else:
                     send(chat_id, "❌ No results")
 
         except Exception as e:
+
             print("ERROR:", e)
+
             time.sleep(3)
 
 # =========================
@@ -383,7 +437,9 @@ def run_bot():
 def crypto_webhook():
 
     try:
+
         data = request.json
+
         user_id = int(data.get("payload"))
 
         cur.execute("""
@@ -391,18 +447,31 @@ def crypto_webhook():
             VALUES (%s,%s,%s)
             ON CONFLICT (user_id)
             DO UPDATE SET paid=EXCLUDED.paid
-        """, (user_id, True, int(time.time()) + 90*24*60*60))
+        """, (
+            user_id,
+            True,
+            int(time.time()) + 90*24*60*60
+        ))
 
         conn.commit()
 
-        user_usage[user_id] = {"list": 0, "search": 0, "paid": True}
+        user_usage[user_id] = {
+            "list": 0,
+            "search": 0,
+            "paid": True
+        }
 
-        send(user_id, "✅ Payment successful!\nAccess unlocked 🚀")
+        send(
+            user_id,
+            "✅ Payment successful!\nAccess unlocked 🚀"
+        )
 
         return {"ok": True}
 
     except Exception as e:
+
         print("Webhook error:", e)
+
         return {"ok": False}
 
 # =========================
@@ -412,4 +481,5 @@ def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
 threading.Thread(target=run_bot).start()
+
 run_flask()
