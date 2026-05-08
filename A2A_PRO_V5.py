@@ -28,10 +28,16 @@ user_usage = {}
 
 def ensure_user(chat_id):
     if chat_id not in user_usage:
-        user_usage[chat_id] = {"list": 0, "search": 0, "paid": False}
+        user_usage[chat_id] = {
+            "list": 0,
+            "search": 0,
+            "paid": False
+        }
 
 def is_blocked(chat_id, mode):
+
     ensure_user(chat_id)
+
     u = user_usage[chat_id]
 
     if u["paid"]:
@@ -82,7 +88,11 @@ user_state = {}
 # SEND
 # =========================
 def send(chat_id, text, reply_markup=None):
-    payload = {"chat_id": chat_id, "text": text}
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
 
     if reply_markup:
         payload["reply_markup"] = reply_markup
@@ -90,14 +100,71 @@ def send(chat_id, text, reply_markup=None):
     requests.post(BASE_URL + "/sendMessage", json=payload)
 
 # =========================
+# CREATE CRYPTO INVOICE
+# =========================
+def create_invoice(chat_id):
+
+    try:
+
+        r = requests.post(
+            "https://pay.crypt.bot/api/createInvoice",
+            headers={
+                "Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN
+            },
+            json={
+                "asset": "USDT",
+                "amount": "3",
+                "description": "A2A_PRO Premium Access",
+                "payload": str(chat_id)
+            }
+        ).json()
+
+        return r["result"]["pay_url"]
+
+    except Exception as e:
+
+        print("INVOICE ERROR:", e)
+
+        return None
+
+# =========================
+# PAYWALL
+# =========================
+def paywall_message(chat_id):
+
+    pay_url = create_invoice(chat_id)
+
+    if not pay_url:
+        send(chat_id, "❌ Payment system error")
+        return
+
+    keyboard = {
+        "inline_keyboard": [[{
+            "text": "💳 Pay 10 AED in USDT",
+            "url": pay_url
+        }]]
+    }
+
+    send(
+        chat_id,
+        "🚫 FREE LIMIT REACHED\n\n"
+        "📦 Premium Access: 10 AED\n"
+        "✔ Unlimited Listings & Searches",
+        keyboard
+    )
+
+# =========================
 # CLEAN + SCORE
 # =========================
 def clean_text(t):
+
     t = t.lower()
     t = re.sub(r"[^a-z0-9\s]", " ", t)
+
     return re.sub(r"\s+", " ", t).strip()
 
 def score(q, t):
+
     q = clean_text(q)
     t = clean_text(t)
 
@@ -130,11 +197,11 @@ WELCOME_MESSAGE = (
 "👉 https://t.me/a2aprobot\n\n"
 "🏠 How to List Property:\n"
 "1. Tap List Property\n"
-"2. Start sending listings (MULTI MODE)\n"
+"2. Start sending listings\n"
 "3. Include WhatsApp link\n\n"
 "Example:\n"
 "Damac Heights 3BR price: 3.5M\n"
-"*‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX\n\n"
+"‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX\n\n"
 "🔎 Search examples:\n"
 "- Damac Height 3BR under 4M\n"
 "- Springs 4BR under 6M\n\n"
@@ -182,17 +249,21 @@ def handle_callback(cb):
         total_listings = cur.fetchone()[0]
 
         if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
-            send(chat_id, "❌ Free listing limit reached")
+            paywall_message(chat_id)
             return
 
         user_state[chat_id] = "listing"
 
-        send(chat_id, "🏠 LISTING MODE ACTIVE (MULTI)")
+        send(chat_id, "🏠 LISTING MODE ACTIVE")
+
         return
 
     if data == "search":
+
         user_state[chat_id] = None
+
         send(chat_id, "🔎 Type search")
+
         return
 
     if data == "manage":
@@ -233,10 +304,13 @@ def handle_callback(cb):
         conn.commit()
 
         send(chat_id, "🗑 Deleted successfully")
+
         return
 
     if data == "restart":
+
         user_state[chat_id] = None
+
         send_main_menu(chat_id)
 
 # =========================
@@ -281,6 +355,7 @@ def run_bot():
                 if "/start" in text.lower():
 
                     user_state[chat_id] = None
+
                     send_main_menu(chat_id)
 
                     continue
@@ -298,19 +373,15 @@ def run_bot():
                     total_listings = cur.fetchone()[0]
 
                     if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
-                        send(chat_id, "❌ Free listing limit reached")
+                        paywall_message(chat_id)
                         continue
 
                     user_state[chat_id] = "listing"
 
                     send(
                         chat_id,
-                        "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
-                        "You can send listings.\n"
-                        "When done, choose another option.\n\n"
-                        "Example:\n"
-                        "Damac Heights 3BR price: 3.5M\n"
-                        "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX"
+                        "🏠 LISTING MODE ACTIVE\n\n"
+                        "Send your listing with WhatsApp link."
                     )
 
                     continue
@@ -320,8 +391,8 @@ def run_bot():
                 # =========================
                 if text == "🔎 Find Property":
 
-                    if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
-                        send(chat_id, "❌ Limit reached")
+                    if is_blocked(chat_id, "search"):
+                        paywall_message(chat_id)
                         continue
 
                     user_state[chat_id] = None
@@ -367,7 +438,7 @@ def run_bot():
                     total_listings = cur.fetchone()[0]
 
                     if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
-                        send(chat_id, "❌ Free listing limit reached")
+                        paywall_message(chat_id)
                         continue
 
                     if "wa.me" not in text:
@@ -375,7 +446,11 @@ def run_bot():
                         continue
 
                     cur.execute("""
-                        INSERT INTO listings (user_id, raw, created_at)
+                        INSERT INTO listings (
+                            user_id,
+                            raw,
+                            created_at
+                        )
                         VALUES (%s,%s,%s)
                         ON CONFLICT DO NOTHING
                     """, (
@@ -397,7 +472,7 @@ def run_bot():
                 # =========================
                 if is_blocked(chat_id, "search"):
 
-                    send(chat_id, "❌ Limit reached")
+                    paywall_message(chat_id)
 
                     continue
 
@@ -422,6 +497,7 @@ def run_bot():
                     )
 
                 else:
+
                     send(chat_id, "❌ No results")
 
         except Exception as e:
@@ -443,7 +519,11 @@ def crypto_webhook():
         user_id = int(data.get("payload"))
 
         cur.execute("""
-            INSERT INTO subscriptions (user_id, paid, expires_at)
+            INSERT INTO subscriptions (
+                user_id,
+                paid,
+                expires_at
+            )
             VALUES (%s,%s,%s)
             ON CONFLICT (user_id)
             DO UPDATE SET paid=EXCLUDED.paid
