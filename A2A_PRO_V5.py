@@ -266,7 +266,12 @@ def run_bot():
                         continue
 
                     user_state[chat_id] = "listing"
-                    send(chat_id, "🏠 LISTING MODE ON")
+                    send(chat_id, "🏠 LISTING MODE ACTIVE (MULTI)\n\n"
+            "You can send unlimited listings.\n"
+            "When done, choose another option.\n\n"
+            "Example:\n"
+            "Damac Heights 3BR price: 3.5M\n"
+            "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX")
                     continue
 
                 # =========================
