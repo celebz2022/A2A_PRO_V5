@@ -15,16 +15,14 @@ DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# =========================
-# CRYPTOBOT CONFIG
-# =========================
-CRYPTOBOT_API_TOKEN = "579100:AAi4VlDKXrA8XrA4CRRL1SW1J2idwuI9RShNN"
+CRYPTOBOT_API_TOKEN = "579100:AAi4VlDKXrA8CRRL1SW1J2idwuI9RShNN"
 
 app = Flask(__name__)
-pending_invoices = {}
+
+PORT = int(os.environ.get("PORT", 8080))
 
 # =========================
-# FREE LIMITS
+# LIMITS
 # =========================
 FREE_LISTINGS = 5
 FREE_SEARCHES = 5
@@ -51,7 +49,7 @@ def is_blocked(chat_id, mode):
     return False
 
 # =========================
-# DATABASE
+# DB
 # =========================
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
@@ -85,9 +83,7 @@ def create_invoice(user_id):
 
     url = "https://pay.crypt.bot/api/createInvoice"
 
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN
-    }
+    headers = {"Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN}
 
     data = {
         "asset": "USDT",
@@ -103,49 +99,48 @@ def create_invoice(user_id):
         print("CryptoBot error:", res)
         return None
 
-    invoice = res["result"]
-    pending_invoices[str(invoice["invoice_id"])] = user_id
+    return res["result"]["pay_url"]
 
-    return invoice["pay_url"]
+# =========================
+# SEND
+# =========================
+def send(chat_id, text, reply_markup=None):
+    payload = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    requests.post(BASE_URL + "/sendMessage", json=payload)
 
 # =========================
 # PAYWALL
 # =========================
 def paywall_message(chat_id):
 
-    payment_url = create_invoice(chat_id)
+    url = create_invoice(chat_id)
 
-    if not payment_url:
-        send(chat_id, "❌ Payment error. Try again later.")
+    if not url:
+        send(chat_id, "❌ Payment error")
         return
 
-    keyboard = {
-        "inline_keyboard": [
-            [{
-                "text": "💳 Pay 50 AED / 3 Months",
-                "url": payment_url
-            }]
-        ]
-    }
-
-    send(
-        chat_id,
+    send(chat_id,
         "🚫 FREE LIMIT REACHED\n\n"
-        "📦 Subscription: 50 AED / 3 Months\n"
-        "✔ Unlimited Listings & Searches\n\n"
-        "⚡ Instant activation after payment",
-        keyboard
+        "💳 50 AED / 3 Months\n"
+        "✔ Unlimited Listings & Searches",
+        {
+            "inline_keyboard": [[{
+                "text": "💳 Pay Now",
+                "url": url
+            }]]
+        }
     )
 
 # =========================
-# WEBHOOK (CryptoBot)
+# WEBHOOK
 # =========================
 @app.route("/crypto-webhook", methods=["POST"])
 def crypto_webhook():
 
-    data = request.json
-
     try:
+        data = request.json
         user_id = int(data.get("payload"))
 
         cur.execute("""
@@ -161,11 +156,7 @@ def crypto_webhook():
 
         conn.commit()
 
-        user_usage[user_id] = {
-            "list": 0,
-            "search": 0,
-            "paid": True
-        }
+        user_usage[user_id] = {"list": 0, "search": 0, "paid": True}
 
         send(user_id, "✅ Payment successful!\n🚀 Access unlocked")
 
@@ -173,72 +164,7 @@ def crypto_webhook():
 
     except Exception as e:
         print("Webhook error:", e)
-        return {"ok": False}, 500
-
-# =========================
-# SEND MESSAGE
-# =========================
-def send(chat_id, text, reply_markup=None):
-
-    payload = {"chat_id": chat_id, "text": text}
-
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-
-    requests.post(BASE_URL + "/sendMessage", json=payload)
-
-# =========================
-# MENU (NO MANAGE LISTINGS)
-# =========================
-def inline_menu():
-    return {
-        "inline_keyboard": [
-            [{"text": "🏠 List Property", "callback_data": "list"}],
-            [{"text": "🔎 Find Property", "callback_data": "search"}],
-            [{"text": "🔄 Restart", "callback_data": "restart"}]
-        ]
-    }
-
-def bottom_menu():
-    return {
-        "keyboard": [
-            ["🏠 List Property", "🔎 Find Property"],
-            ["🔄 Restart"]
-        ],
-        "resize_keyboard": True,
-        "one_time_keyboard": False
-    }
-
-# =========================
-# WELCOME MESSAGE (RESTORED)
-# =========================
-WELCOME_MESSAGE = (
-"🚀 Welcome to A2A_PRO Marketplace\n"
-"👉 https://t.me/a2aprobot\n\n"
-"🏠 How to List Property:\n"
-"1. Tap List Property\n"
-"2. Start sending listings (MULTI MODE)\n"
-"3. Include WhatsApp link\n\n"
-"Example:\n"
-"Damac Heights 3BR price: 3.5M\n"
-"‼️ Mandatory WhatsApp Link https://wa.me/971XXXXXXXXX\n\n"
-"🔎 Search examples:\n"
-"- Damac Height 3BR under 4M\n"
-"- Springs 4BR under 6M\n\n"
-)
-
-# =========================
-# MAIN MENU
-# =========================
-def send_main_menu(chat_id):
-
-    send(chat_id, WELCOME_MESSAGE, inline_menu())
-
-    requests.post(BASE_URL + "/sendMessage", json={
-        "chat_id": chat_id,
-        "text": "👇 Quick Menu Enabled",
-        "reply_markup": bottom_menu()
-    })
+        return {"ok": False}
 
 # =========================
 # MEMORY
@@ -253,9 +179,9 @@ def clean_text(t):
     t = re.sub(r"[^a-z0-9\s]", " ", t)
     return re.sub(r"\s+", " ", t).strip()
 
-def score(query, text):
-    q = clean_text(query)
-    t = clean_text(text)
+def score(q, t):
+    q = clean_text(q)
+    t = clean_text(t)
 
     s = 0
     if q in t:
@@ -268,158 +194,141 @@ def score(query, text):
     return s
 
 # =========================
-# CALLBACK HANDLER (NO MANAGE)
+# MENU
 # =========================
-def handle_callback(cb):
+def send_main_menu(chat_id):
 
-    chat_id = cb["message"]["chat"]["id"]
-    data = cb["data"]
-
-    ensure_user(chat_id)
-
-    requests.post(
-        BASE_URL + "/answerCallbackQuery",
-        data={"callback_query_id": cb["id"]}
+    send(chat_id,
+        "🏠 How to List Property:\n"
+"1. Tap List Property\n"
+"2. Start sending listings (MULTI MODE)\n"
+"3. Include WhatsApp link\n\n"
+"Example:\n"
+"Damac Heights 3BR price: 3.5M\n"
+"*‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX\n\n"
+"🔎 Search examples:\n"
+"- Damac Height 3BR under 4M\n"
+"- Springs 4BR under 6M\n\n",
+        {
+            "inline_keyboard": [
+                [{"text": "🏠 List Property", "callback_data": "list"}],
+                [{"text": "🔎 Find Property", "callback_data": "search"}],
+                [{"text": "🔄 Restart", "callback_data": "restart"}]
+            ]
+        }
     )
-
-    if data == "list":
-
-        if is_blocked(chat_id, "list"):
-            paywall_message(chat_id)
-            return
-
-        user_state[chat_id] = "listing"
-        send(chat_id, "🏠 LISTING MODE ACTIVE\nSend your listings with WhatsApp link")
-        return
-
-    if data == "search":
-        user_state[chat_id] = None
-        send(chat_id, "🔎 Type your search")
-        return
-
-    if data == "restart":
-        user_state[chat_id] = None
-        send_main_menu(chat_id)
-        return
-
-# =========================
-# FLASK START
-# =========================
-def run_flask():
-    import os
-
-PORT = int(os.environ.get("PORT", 8080))
-
-app.run(host="0.0.0.0", port=PORT)
-
-threading.Thread(target=run_flask).start()
 
 # =========================
 # BOT LOOP
 # =========================
-offset = None
-print("🚀 BOT RUNNING")
+def run_bot():
 
-while True:
-    try:
-        data = requests.get(
-            BASE_URL + "/getUpdates",
-            params={"timeout": 10, "offset": offset}
-        ).json()
+    print("🚀 BOT STARTED")
 
-        for update in data.get("result", []):
+    offset = None
 
-            offset = update["update_id"] + 1
+    while True:
+        try:
+            data = requests.get(
+                BASE_URL + "/getUpdates",
+                params={"timeout": 10, "offset": offset}
+            ).json()
 
-            if "callback_query" in update:
-                handle_callback(update["callback_query"])
-                continue
+            for update in data.get("result", []):
 
-            msg = update.get("message")
-            if not msg:
-                continue
+                offset = update["update_id"] + 1
 
-            text = msg.get("text", "")
-            chat_id = msg["chat"]["id"]
-
-            ensure_user(chat_id)
-
-            # START
-            if "/start" in text.lower():
-                user_state[chat_id] = None
-                send_main_menu(chat_id)
-                continue
-
-            # LIST BUTTON
-            if text == "🏠 List Property":
-
-                if is_blocked(chat_id, "list"):
-                    paywall_message(chat_id)
+                if "message" not in update:
                     continue
 
-                user_state[chat_id] = "listing"
-                send(chat_id, "🏠 LISTING MODE ON")
-                continue
+                msg = update["message"]
+                text = msg.get("text", "")
+                chat_id = msg["chat"]["id"]
 
-            # SEARCH BUTTON
-            if text == "🔎 Find Property":
+                ensure_user(chat_id)
 
+                if "/start" in text.lower():
+                    user_state[chat_id] = None
+                    send_main_menu(chat_id)
+                    continue
+
+                if text == "🏠 List Property":
+
+                    if is_blocked(chat_id, "list"):
+                        paywall_message(chat_id)
+                        continue
+
+                    user_state[chat_id] = "listing"
+                    send(chat_id, "🏠 Send listing with WhatsApp link")
+                    continue
+
+                if text == "🔎 Find Property":
+
+                    if is_blocked(chat_id, "search"):
+                        paywall_message(chat_id)
+                        continue
+
+                    send(chat_id, "🔎 Type your search")
+                    continue
+
+                if text == "🔄 Restart":
+                    user_state[chat_id] = None
+                    send_main_menu(chat_id)
+                    continue
+
+                # LISTING MODE
+                if user_state.get(chat_id) == "listing":
+
+                    if "wa.me" not in text:
+                        send(chat_id, "❌ Add WhatsApp link")
+                        continue
+
+                    cur.execute("""
+                        INSERT INTO listings (user_id, raw, created_at)
+                        VALUES (%s,%s,%s)
+                        ON CONFLICT DO NOTHING
+                    """, (chat_id, text, int(time.time())))
+
+                    conn.commit()
+
+                    user_usage[chat_id]["list"] += 1
+
+                    send(chat_id, "✅ Saved")
+                    continue
+
+                # SEARCH MODE
                 if is_blocked(chat_id, "search"):
                     paywall_message(chat_id)
                     continue
 
-                send(chat_id, "🔎 Type your search")
-                continue
+                user_usage[chat_id]["search"] += 1
 
-            # RESTART
-            if text == "🔄 Restart":
-                user_state[chat_id] = None
-                send_main_menu(chat_id)
-                continue
+                cur.execute("SELECT raw FROM listings")
+                rows = cur.fetchall()
 
-            # LISTING MODE
-            if user_state.get(chat_id) == "listing":
+                results = []
 
-                if "wa.me" not in text:
-                    send(chat_id, "❌ Add WhatsApp link")
-                    continue
+                for r in rows:
+                    if score(text, r[0]) > 1:
+                        results.append(r[0])
 
-                cur.execute("""
-                    INSERT INTO listings (user_id, raw, created_at)
-                    VALUES (%s,%s,%s)
-                    ON CONFLICT (raw) DO NOTHING
-                """, (chat_id, text, int(time.time())))
+                if results:
+                    send(chat_id, "🎯 RESULTS\n\n" + "\n\n".join(results[:5]))
+                else:
+                    send(chat_id, "❌ No results")
 
-                conn.commit()
+        except Exception as e:
+            print("ERROR:", e)
+            time.sleep(3)
 
-                user_usage[chat_id]["list"] += 1
+# =========================
+# FLASK
+# =========================
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
 
-                send(chat_id, "✅ Saved! Send another listing.")
-                continue
-
-            # SEARCH MODE
-            if is_blocked(chat_id, "search"):
-                paywall_message(chat_id)
-                continue
-
-            user_usage[chat_id]["search"] += 1
-
-            cur.execute("SELECT raw FROM listings")
-            rows = cur.fetchall()
-
-            results = []
-
-            for r in rows:
-                if score(text, r[0]) > 1:
-                    results.append(r[0])
-
-            if results:
-                send(chat_id, "🎯 MATCHES\n\n" + "\n\n".join(results[:5]))
-            else:
-                send(chat_id, "⏳ No matches found")
-
-        time.sleep(1)
-
-    except Exception as e:
-        print("ERROR:", e)
-        time.sleep(5)
+# =========================
+# START
+# =========================
+threading.Thread(target=run_bot).start()
+run_flask()
