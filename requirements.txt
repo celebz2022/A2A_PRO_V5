@@ -3,3 +3,4 @@ psycopg2-binary
 sentence-transformers
 scikit-learn
 # force rebuild
+flask
