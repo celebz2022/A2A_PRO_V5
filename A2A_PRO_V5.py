@@ -119,7 +119,6 @@ def create_invoice(chat_id):
             }
         ).json()
 
-        # ✅ FIX: safe parsing (prevents payment system crash)
         if not r.get("ok"):
             print("INVOICE API ERROR RESPONSE:", r)
             return None
@@ -140,30 +139,34 @@ def create_invoice(chat_id):
         return None
 
 # =========================
-# PAYWALL
+# PAYWALL (FIXED ONLY HERE)
 # =========================
 def paywall_message(chat_id):
 
     pay_url = create_invoice(chat_id)
 
-    if not pay_url:
-        send(chat_id, "❌ Payment system error")
-        return
-
-    keyboard = {
-        "inline_keyboard": [[{
-            "text": "💳 Pay 10 AED in USDT",
-            "url": pay_url
-        }]]
-    }
-
-    send(
-        chat_id,
-        "🚫 FREE LIMIT REACHED\n\n"
-        "📦 Premium Access: 10 AED\n"
-        "✔ Unlimited Listings & Searches",
-        keyboard
+    message = (
+        "🚫 FREE TRIAL FINISHED\n\n"
+        "💎 Subscribe to continue using A2A_PRO\n\n"
+        "📦 Plan: 10 AED / 3 Months\n"
+        "✔ Unlimited Listings\n"
+        "✔ Unlimited Searches\n\n"
+        "👇 Tap below to activate access"
     )
+
+    keyboard = None
+
+    if pay_url:
+        keyboard = {
+            "inline_keyboard": [[{
+                "text": "💳 Subscribe & Pay (USDT)",
+                "url": pay_url
+            }]]
+        }
+    else:
+        message += "\n\n⚠️ Payment system temporarily unavailable. Please try again in a few seconds."
+
+    send(chat_id, message, keyboard)
 
 # =========================
 # CLEAN + SCORE
@@ -372,9 +375,6 @@ def run_bot():
 
                     continue
 
-                # =========================
-                # LIST PROPERTY
-                # =========================
                 if text == "🏠 List Property":
 
                     cur.execute(
@@ -390,17 +390,10 @@ def run_bot():
 
                     user_state[chat_id] = "listing"
 
-                    send(
-                        chat_id,
-                        "🏠 LISTING MODE ACTIVE\n\n"
-                        "Send your listing with WhatsApp link."
-                    )
+                    send(chat_id, "🏠 LISTING MODE ACTIVE\n\nSend your listing with WhatsApp link.")
 
                     continue
 
-                # =========================
-                # SEARCH
-                # =========================
                 if text == "🔎 Find Property":
 
                     if is_blocked(chat_id, "search"):
@@ -413,9 +406,6 @@ def run_bot():
 
                     continue
 
-                # =========================
-                # MANAGE
-                # =========================
                 if text == "📂 Manage Listings":
 
                     handle_callback({
@@ -426,9 +416,6 @@ def run_bot():
 
                     continue
 
-                # =========================
-                # RESTART
-                # =========================
                 if text == "🔄 Restart":
 
                     user_state[chat_id] = None
@@ -437,21 +424,7 @@ def run_bot():
 
                     continue
 
-                # =========================
-                # LISTING MODE
-                # =========================
                 if user_state.get(chat_id) == "listing":
-
-                    cur.execute(
-                        "SELECT COUNT(*) FROM listings WHERE user_id=%s",
-                        (chat_id,)
-                    )
-
-                    total_listings = cur.fetchone()[0]
-
-                    if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
-                        paywall_message(chat_id)
-                        continue
 
                     if "wa.me" not in text:
                         send(chat_id, "❌ Add WhatsApp link")
@@ -479,9 +452,6 @@ def run_bot():
 
                     continue
 
-                # =========================
-                # SEARCH MODE
-                # =========================
                 if is_blocked(chat_id, "search"):
 
                     paywall_message(chat_id)
@@ -503,10 +473,7 @@ def run_bot():
 
                 if results:
 
-                    send(
-                        chat_id,
-                        "🎯 RESULTS\n\n" + "\n\n".join(results[:5])
-                    )
+                    send(chat_id, "🎯 RESULTS\n\n" + "\n\n".join(results[:5]))
 
                 else:
 
@@ -518,9 +485,6 @@ def run_bot():
 
             time.sleep(3)
 
-# =========================
-# FLASK WEBHOOK
-# =========================
 @app.route("/crypto-webhook", methods=["POST"])
 def crypto_webhook():
 
@@ -553,10 +517,7 @@ def crypto_webhook():
             "paid": True
         }
 
-        send(
-            user_id,
-            "✅ Payment successful!\nAccess unlocked 🚀"
-        )
+        send(user_id, "✅ Payment successful!\nAccess unlocked 🚀")
 
         return {"ok": True}
 
@@ -566,9 +527,6 @@ def crypto_webhook():
 
         return {"ok": False}
 
-# =========================
-# START
-# =========================
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
