@@ -107,35 +107,29 @@ def create_invoice(chat_id):
     try:
 
         r = requests.post(
-            "https://pay.crypt.bot/api/createInvoice",
+            "https://pay.crypt.bot/api/invoice/create",
             headers={
                 "Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN
             },
             json={
                 "asset": "USDT",
-                "amount": "3",
-                "description": "A2A_PRO Premium Access",
-                "payload": str(chat_id)
+                "amount": 10,
+                "description": "A2A_PRO Premium Access - 3 Months",
+                "payload": str(chat_id),
+                "allow_comments": False,
+                "allow_anonymous": False
             }
         ).json()
 
+        print("INVOICE RESPONSE:", r)
+
         if not r.get("ok"):
-            print("INVOICE API ERROR RESPONSE:", r)
             return None
 
-        result = r.get("result", {})
-        pay_url = result.get("pay_url")
-
-        if not pay_url:
-            print("NO PAY URL:", r)
-            return None
-
-        return pay_url
+        return r["result"]["pay_url"]
 
     except Exception as e:
-
         print("INVOICE ERROR:", e)
-
         return None
 
 # =========================
