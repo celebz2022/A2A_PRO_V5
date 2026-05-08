@@ -21,7 +21,38 @@ PORT = int(os.environ.get("PORT", 8080))
 # =========================
 # LIMITS
 # =========================
-FREE_LISTINGS = 5
+# =========================
+# LISTING MODE
+# =========================
+if user_state.get(chat_id) == "listing":
+
+    cur.execute(
+        "SELECT COUNT(*) FROM listings WHERE user_id=%s",
+        (chat_id,)
+    )
+
+    total_listings = cur.fetchone()[0]
+
+    if total_listings >= FREE_LISTINGS and not user_usage[chat_id]["paid"]:
+        send(chat_id, "❌ Free listing limit reached")
+        continue
+
+    if "wa.me" not in text:
+        send(chat_id, "❌ Add WhatsApp link")
+        continue
+
+    cur.execute("""
+        INSERT INTO listings (user_id, raw, created_at)
+        VALUES (%s,%s,%s)
+        ON CONFLICT DO NOTHING
+    """, (chat_id, text, int(time.time())))
+
+    conn.commit()
+
+    user_usage[chat_id]["list"] += 1
+
+    send(chat_id, "✅ Saved")
+    continue
 FREE_SEARCHES = 5
 
 user_usage = {}
