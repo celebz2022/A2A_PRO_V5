@@ -34,13 +34,40 @@ def ensure_user(chat_id):
             "paid": False
         }
 
+# =========================
+# ✅ ADDED: SUBSCRIPTION CHECK
+# =========================
+def is_active(chat_id):
+
+    ensure_user(chat_id)
+
+    if not user_usage[chat_id]["paid"]:
+        return False
+
+    cur.execute(
+        "SELECT expires_at FROM subscriptions WHERE user_id=%s",
+        (chat_id,)
+    )
+
+    row = cur.fetchone()
+
+    if not row:
+        return False
+
+    expires_at = row[0]
+
+    if expires_at is None:
+        return False
+
+    return expires_at > int(time.time())
+
 def is_blocked(chat_id, mode):
 
     ensure_user(chat_id)
 
     u = user_usage[chat_id]
 
-    if u["paid"]:
+    if is_active(chat_id):
         return False
 
     if mode == "list" and u["list"] >= FREE_LISTINGS:
