@@ -186,7 +186,7 @@ def handle_callback(cb):
             send(chat_id, "📭 No listings found")
             return
 
-        for r in rows[:10]:
+        for r in rows[:50]:
 
             keyboard = {
                 "inline_keyboard": [[{
@@ -279,12 +279,16 @@ def run_bot():
                 # =========================
                 if text == "🔎 Find Property":
 
-                    if is_blocked(chat_id, "search"):
-                        send(chat_id, "❌ Limit reached")
-                        continue
+    # only block if NOT in listing mode
+if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
+    send(chat_id, "❌ Limit reached")
+    continue
 
-                    send(chat_id, "🔎 Type search")
-                    continue
+    # FIX: force exit listing mode
+    user_state[chat_id] = None
+
+    send(chat_id, "🔎 Type search")
+    continue
 
                 # =========================
                 # FIXED: MANAGE BUTTON (BOTTOM MENU)
@@ -329,9 +333,10 @@ def run_bot():
                 # =========================
                 # SEARCH MODE
                 # =========================
-                if is_blocked(chat_id, "search"):
-                    send(chat_id, "❌ Limit reached")
-                    continue
+                # only block if NOT in listing mode
+if is_blocked(chat_id, "search") and user_state.get(chat_id) != "listing":
+    send(chat_id, "❌ Limit reached")
+    continue
 
                 user_usage[chat_id]["search"] += 1
 
