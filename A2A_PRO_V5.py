@@ -106,31 +106,28 @@ def create_invoice(chat_id):
 
     try:
 
-        url = "https://pay.crypt.bot/api/createInvoice"
+        r = requests.post(
+            "https://pay.crypt.bot/api/createInvoice",
+            headers={
+                "Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN
+            },
+            json={
+                "asset": "USDT",
+                "amount": 5,
+                "description": "A2A_PRO Premium Access - 3 Months",
+                "payload": str(chat_id),
+                "allow_comments": False,
+                "allow_anonymous": False
+            }
+        ).json()
 
-        payload = {
-            "asset": "USDT",
-            "amount": 10,
-            "description": "A2A_PRO Premium Access - 3 Months",
-            "payload": str(chat_id)
-        }
+        print("INVOICE RESPONSE:", r)
 
-        headers = {
-            "Crypto-Pay-API-Token": CRYPTOBOT_API_TOKEN
-        }
-
-        r = requests.post(url, json=payload, headers=headers)
-
-        print("STATUS:", r.status_code)
-        print("RESPONSE TEXT:", r.text)
-
-        data = r.json()
-
-        if not data.get("ok"):
-            print("❌ CRYPTOBOT REJECTED:", data)
+        if not r or not r.get("ok"):
+            print("CRYPTO ERROR:", r)
             return None
 
-        return data["result"]["pay_url"]
+        return r["result"]["pay_url"]
 
     except Exception as e:
         print("INVOICE ERROR:", e)
@@ -146,7 +143,7 @@ def paywall_message(chat_id):
     message = (
         "🚫 FREE TRIAL FINISHED\n\n"
         "💎 Subscribe to continue using A2A_PRO\n\n"
-        "📦 Plan: 10 AED / 3 Months\n"
+        "📦 Plan: 5 USD / 3 Months\n"
         "✔ Unlimited Listings\n"
         "✔ Unlimited Searches\n\n"
         "👇 Tap below to activate access"
@@ -524,6 +521,10 @@ def crypto_webhook():
         print("Webhook error:", e)
 
         return {"ok": False}
+
+@app.route("/", methods=["GET"])
+def home():
+    return "A2A_PRO bot is running 🚀"
 
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
