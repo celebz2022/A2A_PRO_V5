@@ -277,12 +277,18 @@ def bottom_menu():
     }
 
 WELCOME_MESSAGE = (
-    "🚀 Welcome to A2A_PRO Marketplace\n"
-    "👉 https://t.me/a2aprobot\n\n"
-    "🏠 How to List Property:\n"
-    "1. Tap List Property\n"
-    "2. Start sending listings\n"
-    "3. Include WhatsApp link\n\n"
+    🏠 How to List Your Property
+
+Click on “List Property”
+Start submitting your property details
+Always include a WhatsApp contact link
+
+📌 Example Listing Format:
+Damac Heights | 3BR | AED 3.5M
+
+⚠️ Mandatory Requirement:
+Include WhatsApp link
+👉 https://wa.me/971XXXXXXXXX
 )
 
 def send_main_menu(chat_id):
