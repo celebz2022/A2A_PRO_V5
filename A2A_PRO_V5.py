@@ -9,18 +9,17 @@ import threading
 # =========================
 # CONFIG
 # =========================
-BOT_TOKEN = "8628606501:AAFRdPc5JTuI35M-Z16XPwoUqWtrBGQtZTo"
+BOT_TOKEN = "8628606501:AAFrdPc5JTuI35M-Z16XPwoUqWtrBGQtZTo"
 
 DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway"
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # =========================
-# PAYRAM CONFIG
+# CARDLINK CONFIG
 # =========================
-PAYRAM_API_KEY = "YOUR_PAYRAM_API_KEY"
-
-PAYRAM_WEBHOOK_SECRET = "YOUR_WEBHOOK_SECRET"
+CARDLINK_API_KEY = os.getenv("CARDLINK_API_KEY")
+CARDLINK_WEBHOOK_SECRET = os.getenv("CARDLINK_WEBHOOK_SECRET")
 
 DOMAIN = "https://a2aprov5-production.up.railway.app/"
 
@@ -92,20 +91,16 @@ def ensure_user(chat_id):
 
     if row:
         paid, expires_at = row
-
         if paid and expires_at and expires_at > int(time.time()):
             active = True
 
     if chat_id not in user_usage:
-
         user_usage[chat_id] = {
             "list": 0,
             "search": 0,
             "paid": active
         }
-
     else:
-
         user_usage[chat_id]["paid"] = active
 
 # =========================
@@ -167,33 +162,32 @@ def send(chat_id, text, reply_markup=None):
     requests.post(BASE_URL + "/sendMessage", json=payload)
 
 # =========================
-# CREATE PAYRAM PAYMENT
+# CARDLINK PAYMENT
 # =========================
-def create_payram_invoice(chat_id):
+def create_cardlink_invoice(chat_id):
 
     try:
 
         payload = {
             "amount": 5,
             "currency": "USD",
-
             "description": "A2A_PRO Premium Access - 3 Months",
+
+            "order_id": str(chat_id) + "_" + str(int(time.time())),
+
+            "success_url": f"{DOMAIN}/success",
+            "fail_url": f"{DOMAIN}/cancel",
+            "callback_url": f"{DOMAIN}/cardlink-webhook",
 
             "metadata": {
                 "telegram_id": str(chat_id)
-            },
-
-            "success_url": f"{DOMAIN}/success",
-
-            "cancel_url": f"{DOMAIN}/cancel",
-
-            "webhook_url": f"{DOMAIN}/payram-webhook"
+            }
         }
 
         r = requests.post(
-            "https://api.payram.com/payment/create",
+            "https://cardlink.link/api/payments",
             headers={
-                "Authorization": f"Bearer {PAYRAM_API_KEY}",
+                "Authorization": f"Bearer {CARDLINK_API_KEY}",
                 "Content-Type": "application/json"
             },
             json=payload
@@ -201,17 +195,15 @@ def create_payram_invoice(chat_id):
 
         data = r.json()
 
-        print("PAYRAM RESPONSE:", data)
+        print("CARDLINK RESPONSE:", data)
 
         if not data.get("success"):
             return None
 
-        return data["payment_url"]
+        return data.get("payment_url")
 
     except Exception as e:
-
-        print("PAYRAM ERROR:", e)
-
+        print("CARDLINK ERROR:", e)
         return None
 
 # =========================
@@ -219,7 +211,7 @@ def create_payram_invoice(chat_id):
 # =========================
 def paywall_message(chat_id):
 
-    pay_url = create_payram_invoice(chat_id)
+    pay_url = create_cardlink_invoice(chat_id)
 
     message = (
         "🚫 FREE TRIAL FINISHED\n\n"
@@ -233,16 +225,13 @@ def paywall_message(chat_id):
     keyboard = None
 
     if pay_url:
-
         keyboard = {
             "inline_keyboard": [[{
-                "text": "🍎 Pay with Apple Pay",
+                "text": "💳 Pay Now",
                 "url": pay_url
             }]]
         }
-
     else:
-
         message += "\n\n⚠️ Payment system unavailable."
 
     send(chat_id, message, keyboard)
@@ -251,18 +240,14 @@ def paywall_message(chat_id):
 # CLEAN TEXT
 # =========================
 def clean_text(t):
-
     t = t.lower()
-
     t = re.sub(r"[^a-z0-9\s]", " ", t)
-
     return re.sub(r"\s+", " ", t).strip()
 
 # =========================
 # SEARCH SCORE
 # =========================
 def score(q, t):
-
     q = clean_text(q)
     t = clean_text(t)
 
@@ -272,7 +257,6 @@ def score(q, t):
         s += 2
 
     for w in q.split():
-
         if w in t:
             s += 0.5
 
@@ -295,19 +279,10 @@ def bottom_menu():
 WELCOME_MESSAGE = (
     "🚀 Welcome to A2A_PRO Marketplace\n"
     "👉 https://t.me/a2aprobot\n\n"
-
     "🏠 How to List Property:\n"
     "1. Tap List Property\n"
     "2. Start sending listings\n"
     "3. Include WhatsApp link\n\n"
-
-    "Example:\n"
-    "Damac Heights 3BR price: 3.5M\n"
-    "‼️Mandatory Whatsapp Link https://wa.me/971XXXXXXXXX\n\n"
-
-    "🔎 Search examples:\n"
-    "- Damac Height 3BR under 4M\n"
-    "- Springs 4BR under 6M\n\n"
 )
 
 def send_main_menu(chat_id):
@@ -333,7 +308,6 @@ def send_main_menu(chat_id):
 def handle_callback(cb):
 
     chat_id = cb["message"]["chat"]["id"]
-
     data = cb["data"]
 
     ensure_user(chat_id)
@@ -345,57 +319,38 @@ def handle_callback(cb):
 
     if data == "list":
 
-        cur.execute(
-            "SELECT COUNT(*) FROM listings WHERE user_id=%s",
-            (chat_id,)
-        )
-
+        cur.execute("SELECT COUNT(*) FROM listings WHERE user_id=%s", (chat_id,))
         total_listings = cur.fetchone()[0]
 
         if total_listings >= FREE_LISTINGS and not is_active(chat_id):
-
             paywall_message(chat_id)
-
             return
 
         user_state[chat_id] = "listing"
-
         send(chat_id, "🏠 LISTING MODE ACTIVE")
-
         return
 
     if data == "search":
-
         user_state[chat_id] = None
-
         send(chat_id, "🔎 Type search")
-
         return
 
     if data == "manage":
 
-        cur.execute(
-            "SELECT id, raw FROM listings WHERE user_id=%s",
-            (chat_id,)
-        )
-
+        cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
 
         if not rows:
-
             send(chat_id, "📭 No listings found")
-
             return
 
         for r in rows[:50]:
-
             keyboard = {
                 "inline_keyboard": [[{
                     "text": "❌ Delete",
                     "callback_data": f"del_{r[0]}"
                 }]]
             }
-
             send(chat_id, f"📄 {r[1]}", keyboard)
 
         return
@@ -412,13 +367,10 @@ def handle_callback(cb):
         conn.commit()
 
         send(chat_id, "🗑 Deleted successfully")
-
         return
 
     if data == "restart":
-
         user_state[chat_id] = None
-
         send_main_menu(chat_id)
 
 # =========================
@@ -436,10 +388,7 @@ def run_bot():
 
             data = requests.get(
                 BASE_URL + "/getUpdates",
-                params={
-                    "timeout": 10,
-                    "offset": offset
-                }
+                params={"timeout": 10, "offset": offset}
             ).json()
 
             for update in data.get("result", []):
@@ -447,200 +396,134 @@ def run_bot():
                 offset = update["update_id"] + 1
 
                 if "callback_query" in update:
-
                     handle_callback(update["callback_query"])
-
                     continue
 
                 msg = update.get("message")
-
                 if not msg:
                     continue
 
                 text = msg.get("text", "")
-
                 chat_id = msg["chat"]["id"]
 
                 ensure_user(chat_id)
 
                 if "/start" in text.lower():
-
                     user_state[chat_id] = None
-
                     send_main_menu(chat_id)
-
                     continue
 
                 if text == "🏠 List Property":
 
-                    cur.execute(
-                        "SELECT COUNT(*) FROM listings WHERE user_id=%s",
-                        (chat_id,)
-                    )
-
+                    cur.execute("SELECT COUNT(*) FROM listings WHERE user_id=%s", (chat_id,))
                     total_listings = cur.fetchone()[0]
 
                     if total_listings >= FREE_LISTINGS and not is_active(chat_id):
-
                         paywall_message(chat_id)
-
                         continue
 
                     user_state[chat_id] = "listing"
-
-                    send(
-                        chat_id,
-                        "🏠 LISTING MODE ACTIVE\n\nSend your listing with WhatsApp link."
-                    )
-
+                    send(chat_id, "🏠 LISTING MODE ACTIVE\n\nSend your listing with WhatsApp link.")
                     continue
 
                 if text == "🔎 Find Property":
 
                     if is_blocked(chat_id, "search"):
-
                         paywall_message(chat_id)
-
                         continue
 
                     user_state[chat_id] = None
-
                     send(chat_id, "🔎 Type search")
-
                     continue
 
                 if text == "📂 Manage Listings":
-
                     handle_callback({
                         "message": {"chat": {"id": chat_id}},
                         "data": "manage",
                         "id": "manual"
                     })
-
                     continue
 
                 if text == "🔄 Restart":
-
                     user_state[chat_id] = None
-
                     send_main_menu(chat_id)
-
                     continue
 
                 if user_state.get(chat_id) == "listing":
 
                     if "wa.me" not in text:
-
                         send(chat_id, "❌ Add WhatsApp link")
-
                         continue
 
                     cur.execute("""
-                        INSERT INTO listings (
-                            user_id,
-                            raw,
-                            created_at
-                        )
+                        INSERT INTO listings (user_id, raw, created_at)
                         VALUES (%s,%s,%s)
                         ON CONFLICT DO NOTHING
-                    """, (
-                        chat_id,
-                        text,
-                        int(time.time())
-                    ))
+                    """, (chat_id, text, int(time.time())))
 
                     conn.commit()
 
                     user_usage[chat_id]["list"] += 1
 
                     send(chat_id, "✅ Saved")
-
                     continue
 
                 if is_blocked(chat_id, "search"):
-
                     paywall_message(chat_id)
-
                     continue
 
                 user_usage[chat_id]["search"] += 1
 
                 cur.execute("SELECT raw FROM listings")
-
                 rows = cur.fetchall()
 
                 results = []
 
                 for r in rows:
-
                     if score(text, r[0]) > 1:
                         results.append(r[0])
 
                 if results:
-
-                    send(
-                        chat_id,
-                        "🎯 RESULTS\n\n" + "\n\n".join(results[:5])
-                    )
-
+                    send(chat_id, "🎯 RESULTS\n\n" + "\n\n".join(results[:5]))
                 else:
-
                     send(chat_id, "❌ No results")
 
         except Exception as e:
-
             print("BOT ERROR:", e)
-
             time.sleep(3)
 
 # =========================
-# PAYRAM WEBHOOK
+# CARDLINK WEBHOOK
 # =========================
-@app.route("/payram-webhook", methods=["POST"])
-def payram_webhook():
+@app.route("/cardlink-webhook", methods=["POST"])
+def cardlink_webhook():
 
     try:
 
         data = request.json
+        print("CARDLINK WEBHOOK:", data)
 
-        print("PAYRAM WEBHOOK:", data)
+        received_secret = request.headers.get("x-cardlink-secret")
 
-        received_secret = request.headers.get("x-payram-secret")
-
-        if received_secret != PAYRAM_WEBHOOK_SECRET:
-
+        if received_secret != CARDLINK_WEBHOOK_SECRET:
             return {"ok": False}, 403
 
         status = data.get("status")
 
-        if status != "paid":
-
+        if status not in ["paid", "success"]:
             return {"ok": True}
 
         metadata = data.get("metadata", {})
-
         user_id = int(metadata.get("telegram_id"))
 
         expires = int(time.time()) + 90 * 24 * 60 * 60
 
         cur.execute("""
-            INSERT INTO subscriptions (
-                user_id,
-                paid,
-                expires_at
-            )
+            INSERT INTO subscriptions (user_id, paid, expires_at)
             VALUES (%s,%s,%s)
-
             ON CONFLICT (user_id)
-
-            DO UPDATE SET
-                paid=EXCLUDED.paid,
-                expires_at=EXCLUDED.expires_at
-        """, (
-            user_id,
-            True,
-            expires
-        ))
+            DO UPDATE SET paid=EXCLUDED.paid, expires_at=EXCLUDED.expires_at
+        """, (user_id, True, expires))
 
         conn.commit()
 
@@ -650,53 +533,37 @@ def payram_webhook():
             "paid": True
         }
 
-        send(
-            user_id,
-            "✅ Payment confirmed!\n\n🚀 Premium activated for 3 months."
-        )
+        send(user_id, "✅ Payment confirmed!\n\n🚀 Premium activated for 3 months.")
 
         return {"ok": True}
 
     except Exception as e:
-
         print("WEBHOOK ERROR:", e)
-
         return {"ok": False}
 
 # =========================
-# SUCCESS PAGE
+# SUCCESS / CANCEL
 # =========================
 @app.route("/success")
 def success():
-
     return "✅ Payment successful. Return to Telegram."
 
-# =========================
-# CANCEL PAGE
-# =========================
 @app.route("/cancel")
 def cancel():
-
     return "❌ Payment cancelled."
 
-# =========================
-# HOME
-# =========================
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
-
     return "A2A_PRO bot is running 🚀"
 
 # =========================
 # RUN FLASK
 # =========================
 def run_flask():
-
     app.run(host="0.0.0.0", port=PORT)
 
 # =========================
 # START
 # =========================
 threading.Thread(target=run_bot).start()
-
 run_flask()
