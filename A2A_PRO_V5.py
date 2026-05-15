@@ -185,7 +185,7 @@ def create_cardlink_invoice(chat_id):
         }
 
         r = requests.post(
-            "https://cardlink.link/api/payments",
+            "https://cardlink.link/api/v1/bill/create",
             headers={
                 "Authorization": f"Bearer {CARDLINK_API_KEY}",
                 "Content-Type": "application/json"
@@ -574,7 +574,7 @@ def create_cardlink_invoice(chat_id):
         print("CARDLINK API KEY:", CARDLINK_API_KEY)
 
         r = requests.post(
-            "https://cardlink.link/api/payments",
+            "https://cardlink.link/api/v1/bill/create",
             headers={
                 "Authorization": f"Bearer {CARDLINK_API_KEY}",
                 "Content-Type": "application/json"
