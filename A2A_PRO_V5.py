@@ -33,8 +33,8 @@ PORT = int(os.environ.get("PORT", 8080))
 # =========================
 # LIMITS
 # =========================
-FREE_LISTINGS = 1
-FREE_SEARCHES = 5
+FREE_LISTINGS = 0
+FREE_SEARCHES = 0
 
 # =========================
 # DATABASE
