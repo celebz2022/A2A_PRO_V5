@@ -551,6 +551,55 @@ def cardlink_webhook():
         return {"ok": False}
 
 # =========================
+def create_cardlink_invoice(chat_id):
+
+    try:
+
+        payload = {
+            "amount": 5,
+            "currency": "USD",
+            "description": "A2A_PRO Premium Access - 3 Months",
+
+            "order_id": str(chat_id) + "_" + str(int(time.time())),
+
+            "success_url": f"{DOMAIN}/success",
+            "fail_url": f"{DOMAIN}/cancel",
+            "callback_url": f"{DOMAIN}/cardlink-webhook",
+
+            "metadata": {
+                "telegram_id": str(chat_id)
+            }
+        }
+
+        print("CARDLINK API KEY:", CARDLINK_API_KEY)
+
+        r = requests.post(
+            "https://cardlink.link/api/payments",
+            headers={
+                "Authorization": f"Bearer {CARDLINK_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=payload
+        )
+
+        print("STATUS CODE:", r.status_code)
+        print("RAW RESPONSE:", r.text)
+
+        data = r.json()
+
+        print("CARDLINK RESPONSE:", data)
+
+        if not data.get("success"):
+            return None
+
+        return data.get("payment_url")
+
+    except Exception as e:
+
+        print("CARDLINK ERROR:", str(e))
+
+        return None
+# =========================
 # SUCCESS / CANCEL
 # =========================
 @app.route("/success")
