@@ -82,17 +82,8 @@ def score(q, t):
     return s
 
 # =========================
-# MENU
+# INLINE MENU ONLY
 # =========================
-def bottom_menu():
-    return {
-        "keyboard": [
-            ["🏠 List Property", "🔎 Find Property"],
-            ["📂 Manage Listings", "🔄 Restart"]
-        ],
-        "resize_keyboard": True
-    }
-
 WELCOME_MESSAGE = (
     "🚀 Welcome to A2A_PRO Marketplace\n"
     "👉 https://t.me/a2aprobot\n\n"
@@ -155,13 +146,12 @@ def handle_callback(cb):
             return
 
         for r in rows[:50]:
-            keyboard = {
+            send(chat_id, f"📄 {r[1]}", {
                 "inline_keyboard": [[{
                     "text": "❌ Delete",
                     "callback_data": f"del_{r[0]}"
                 }]]
-            }
-            send(chat_id, f"📄 {r[1]}", keyboard)
+            })
         return
 
     if data.startswith("del_"):
