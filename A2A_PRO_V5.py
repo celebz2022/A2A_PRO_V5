@@ -94,12 +94,25 @@ def bottom_menu():
     }
 
 WELCOME_MESSAGE = (
-    "🚀 Welcome to A2A_PRO Marketplace\n\n"
-    "🏠 List Property\n"
-    "🔎 Find Property\n"
+    "🚀 Welcome to A2A_PRO Marketplace\n"
+    "👉 https://t.me/a2aprobot\n\n"
+
+    "🏠 How to List Your Property:\n"
+    "1. Tap List Property\n"
+    "2. Send your listing\n"
+    "3. Include WhatsApp link\n\n"
+
+    "Example:\n"
+    "Damac Heights 3BR price: 3.5M\n"
+    "‼️ Mandatory WhatsApp Link https://wa.me/971XXXXXXXXX\n\n"
+
+    "🔎 Search examples:\n"
+    "- Damac Heights 3BR under 4M\n"
+    "- Springs 4BR under 6M\n"
 )
 
 def send_main_menu(chat_id):
+
     send(chat_id, WELCOME_MESSAGE, {
         "inline_keyboard": [
             [{"text": "🏠 List Property", "callback_data": "list"}],
@@ -113,6 +126,7 @@ def send_main_menu(chat_id):
 # CALLBACKS
 # =========================
 def handle_callback(cb):
+
     chat_id = cb["message"]["chat"]["id"]
     data = cb["data"]
 
@@ -132,6 +146,7 @@ def handle_callback(cb):
         return
 
     if data == "manage":
+
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
 
@@ -150,6 +165,7 @@ def handle_callback(cb):
         return
 
     if data.startswith("del_"):
+
         listing_id = int(data.split("_")[1])
 
         cur.execute(
