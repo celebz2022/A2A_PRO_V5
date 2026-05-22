@@ -10,13 +10,16 @@ import threading
 # CONFIG
 # =========================
 BOT_TOKEN = "8628606501:AAEE1BO_DwpF6NOl_ByFrg1vJ0k0rfVZNDI"
+
 DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway"
+
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # =========================
 # FLASK
 # =========================
 app = Flask(__name__)
+
 PORT = int(os.environ.get("PORT", 8080))
 
 # =========================
@@ -49,7 +52,6 @@ user_state = {}
 # SEND MESSAGE
 # =========================
 def send(chat_id, text, reply_markup=None):
-
     payload = {
         "chat_id": chat_id,
         "text": text
@@ -85,6 +87,17 @@ def score(q, t):
 # =========================
 # MENU
 # =========================
+def bottom_menu():
+    return {
+        "keyboard": [
+            ["🏠 List Property", "🔎 Find Property"],
+            ["📂 Manage Listings", "🔄 Restart"]
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False,
+        "persistent": True   # ✅ ONLY CHANGE ADDED
+    }
+
 WELCOME_MESSAGE = (
     "🚀 Welcome to A2A_PRO Marketplace\n"
     "👉 https://t.me/a2aprobot\n\n"
@@ -112,6 +125,12 @@ def send_main_menu(chat_id):
             [{"text": "📂 Manage Listings", "callback_data": "manage"}],
             [{"text": "🔄 Restart", "callback_data": "restart"}]
         ]
+    })
+
+    requests.post(BASE_URL + "/sendMessage", json={
+        "chat_id": chat_id,
+        "text": "👇 Quick Menu Enabled",
+        "reply_markup": bottom_menu()
     })
 
 # =========================
@@ -147,12 +166,13 @@ def handle_callback(cb):
             return
 
         for r in rows[:50]:
-            send(chat_id, f"📄 {r[1]}", {
+            keyboard = {
                 "inline_keyboard": [[{
                     "text": "❌ Delete",
                     "callback_data": f"del_{r[0]}"
                 }]]
-            })
+            }
+            send(chat_id, f"📄 {r[1]}", keyboard)
         return
 
     if data.startswith("del_"):
@@ -182,9 +202,7 @@ def run_bot():
     offset = None
 
     while True:
-
         try:
-
             data = requests.get(
                 BASE_URL + "/getUpdates",
                 params={"timeout": 10, "offset": offset}
@@ -246,7 +264,6 @@ def run_bot():
                     """, (chat_id, text, int(time.time())))
 
                     conn.commit()
-
                     send(chat_id, "✅ Saved")
                     continue
 
