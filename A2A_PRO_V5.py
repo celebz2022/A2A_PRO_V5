@@ -49,6 +49,7 @@ user_state = {}
 # SEND MESSAGE
 # =========================
 def send(chat_id, text, reply_markup=None):
+
     payload = {
         "chat_id": chat_id,
         "text": text
@@ -82,7 +83,7 @@ def score(q, t):
     return s
 
 # =========================
-# INLINE MENU ONLY
+# MENU
 # =========================
 WELCOME_MESSAGE = (
     "🚀 Welcome to A2A_PRO Marketplace\n"
@@ -181,7 +182,9 @@ def run_bot():
     offset = None
 
     while True:
+
         try:
+
             data = requests.get(
                 BASE_URL + "/getUpdates",
                 params={"timeout": 10, "offset": offset}
@@ -243,6 +246,7 @@ def run_bot():
                     """, (chat_id, text, int(time.time())))
 
                     conn.commit()
+
                     send(chat_id, "✅ Saved")
                     continue
 
