@@ -19,7 +19,6 @@ BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 # FLASK
 # =========================
 app = Flask(__name__)
-
 PORT = int(os.environ.get("PORT", 8080))
 
 # =========================
@@ -39,7 +38,6 @@ CREATE TABLE IF NOT EXISTS listings (
     created_at BIGINT
 )
 """)
-
 conn.commit()
 
 # =========================
@@ -56,7 +54,6 @@ def send(chat_id, text, reply_markup=None):
         "chat_id": chat_id,
         "text": text
     }
-
     if reply_markup:
         payload["reply_markup"] = reply_markup
 
@@ -95,29 +92,25 @@ def bottom_menu():
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False,
-        "persistent": True   # ✅ ONLY CHANGE ADDED
+        "persistent": True
     }
 
 WELCOME_MESSAGE = (
     "🚀 Welcome to A2A_PRO Marketplace\n"
     "👉 https://t.me/a2aprobot\n\n"
-
     "🏠 How to List Your Property:\n"
     "1. Tap List Property\n"
     "2. Send your listing\n"
     "3. Include WhatsApp link\n\n"
-
     "Example:\n"
     "Damac Heights 3BR price: 3.5M\n"
     "‼️ Mandatory WhatsApp Link https://wa.me/971XXXXXXXXX\n\n"
-
     "🔎 Search examples:\n"
     "- Damac Heights 3BR under 4M\n"
     "- Springs 4BR under 6M\n"
 )
 
 def send_main_menu(chat_id):
-
     send(chat_id, WELCOME_MESSAGE, {
         "inline_keyboard": [
             [{"text": "🏠 List Property", "callback_data": "list"}],
@@ -137,7 +130,6 @@ def send_main_menu(chat_id):
 # CALLBACKS
 # =========================
 def handle_callback(cb):
-
     chat_id = cb["message"]["chat"]["id"]
     data = cb["data"]
 
@@ -157,7 +149,6 @@ def handle_callback(cb):
         return
 
     if data == "manage":
-
         cur.execute("SELECT id, raw FROM listings WHERE user_id=%s", (chat_id,))
         rows = cur.fetchall()
 
@@ -176,7 +167,6 @@ def handle_callback(cb):
         return
 
     if data.startswith("del_"):
-
         listing_id = int(data.split("_")[1])
 
         cur.execute(
@@ -184,7 +174,6 @@ def handle_callback(cb):
             (listing_id, chat_id)
         )
         conn.commit()
-
         send(chat_id, "🗑 Deleted successfully")
         return
 
@@ -196,9 +185,7 @@ def handle_callback(cb):
 # BOT LOOP
 # =========================
 def run_bot():
-
     print("🚀 BOT RUNNING")
-
     offset = None
 
     while True:
@@ -209,7 +196,6 @@ def run_bot():
             ).json()
 
             for update in data.get("result", []):
-
                 offset = update["update_id"] + 1
 
                 if "callback_query" in update:
@@ -252,7 +238,6 @@ def run_bot():
                     continue
 
                 if user_state.get(chat_id) == "listing":
-
                     if "wa.me" not in text:
                         send(chat_id, "❌ Add WhatsApp link")
                         continue
@@ -271,13 +256,30 @@ def run_bot():
                 rows = cur.fetchall()
 
                 results = []
-
                 for r in rows:
                     if score(text, r[0]) > 1:
                         results.append(r[0])
 
+                # =========================
+                # UPDATED RESULTS BLOCK
+                # =========================
                 if results:
-                    send(chat_id, "🎯 RESULTS\n\n" + "\n\n".join(results[:5]))
+
+                    formatted_results = []
+
+                    for listing in results[:5]:
+
+                        msg = (
+                            f"{listing}\n\n"
+                            f"🤖 A2A_PRO Bot: https://t.me/a2aprobot\n\n"
+                            f"📲 Copy & send this message to the agent:\n\n"
+                            f"Hello, I found your listing through A2A_Pro Bot"
+                        )
+
+                        formatted_results.append(msg)
+
+                    send(chat_id, "🎯 RESULTS\n\n" + "\n\n-------------------\n\n".join(formatted_results))
+
                 else:
                     send(chat_id, "❌ No results")
 
