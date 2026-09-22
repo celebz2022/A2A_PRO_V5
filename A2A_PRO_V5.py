@@ -9,7 +9,7 @@ import threading
 # =========================
 # CONFIG
 # =========================
-BOT_TOKEN = "8628606501:AAEE1BO_DwpF6NOl_ByFrg1vJ0k0rfVZNDI"
+BOT_TOKEN = "8628606501:AAEE56dsF6FQdNH0IXGB-ZYD6uuG68Gzs0g"
 
 DATABASE_URL = "postgresql://postgres:QjDEndVOQkUvjCBudiHANPYJzPjbxEHe@postgres.railway.internal:5432/railway"
 
